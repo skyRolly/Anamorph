@@ -21,6 +21,8 @@ sys.path.insert(0, str(AUDIT))
 from replay_provenance import JUCE, cache_values, fresh_checkout_build, git, git_environment, verify_source_tree
 from rebuild_probe import link_objects, sha, version
 from replay_experiment import blob
+from compiler_inputs import (generated_include_manifest, relevant_compile_commands,
+                             verify_compile_dependencies, verify_generated_inputs, verify_relocated_source)
 
 
 def main():
@@ -33,7 +35,8 @@ def main():
     a = p.parse_args()
     checkout, juce, out = a.checkout.resolve(), a.juce.resolve(), a.out.resolve()
     tools = {str(path): sha(path) for path in [Path(__file__).resolve(),
-             AUDIT/'replay_provenance.py', AUDIT/'replay_experiment.py', AUDIT/'rebuild_probe.py']}
+             AUDIT/'replay_provenance.py', AUDIT/'replay_experiment.py', AUDIT/'rebuild_probe.py',
+             AUDIT/'compiler_inputs.py']}
     raw_spec = blob(a.spec_commit, a.spec_path)
     spec = json.loads(raw_spec)
     if not spec.get('purpose') or not spec.get('variants') or not spec.get('runs'):
@@ -70,9 +73,25 @@ def main():
         binary = build/(target+'_artefacts/Release/'+target)
         binaries[('base', target)] = binary
         identity['targets_detail'][target] = {'ninja_commands': commands[target],
-            'link_objects_sha256': link_objects(link, build), 'binary_sha256': sha(binary)}
+            'link_objects_sha256': link_objects(link, build), 'binary_sha256': sha(binary),
+            'generated_include_manifest': generated_include_manifest(
+                relevant_compile_commands(commands[target], target), build, checkout, juce)}
+    def verify_fresh_build():
+        for target, detail in identity['targets_detail'].items():
+            verify_generated_inputs(detail['generated_include_manifest'],
+                                    relevant_compile_commands(commands[target], target), build, checkout, juce)
+            if sha(binaries[('base', target)]) != detail['binary_sha256']:
+                raise ValueError('fresh target binary changed')
+            for filename, digest in detail['link_objects_sha256'].items():
+                if sha(filename) != digest:
+                    raise ValueError('fresh target object changed: '+filename)
+        for filename, key in [('CMakeCache.txt', 'cache_sha256'), ('build.ninja', 'rules_sha256'),
+                              ('compile_commands.json', 'compile_commands_sha256')]:
+            if sha(build/filename) != identity[key]:
+                raise ValueError('fresh generated build input changed: '+filename)
     engine_path = 'src/dsp/AnamorphEngine.cpp'
     for variant in spec['variants']:
+        verify_fresh_build()
         name = variant['name']
         if not re.fullmatch('[a-z0-9-]+', name) or not variant.get('purpose'):
             raise ValueError('invalid variant name or missing purpose')
@@ -96,23 +115,37 @@ def main():
             raise ValueError('relocating this translation unit can change its compiled semantics')
         directory = out/name; directory.mkdir()
         source = directory/'AnamorphEngine.cpp'; source.write_bytes(engine)
+        verify_relocated_source(source)
         entry = {'purpose': variant['purpose'], 'patch_commit': commit, 'patch_path': variant['path'],
                  'patch_sha256': variant['sha256'], 'source_tree': tree,
                  'engine_sha256': sha(source), 'targets': {}}
         for target in targets:
+            verify_generated_inputs(identity['targets_detail'][target]['generated_include_manifest'],
+                                    relevant_compile_commands(commands[target], target), build, checkout, juce)
+            verify_fresh_build()
             cc = compile_cmds[target].copy(); old_obj = cc[cc.index('-o')+1]
+            # A relocated engine TU must search its original quote-include
+            # directory before the generated -I directory, as the original did.
+            cc[1:1] = ['-iquote', str(checkout/'src/dsp')]
             obj = directory/(target+'.o')
             for flag, value in [('-o', str(obj)), ('-c', str(source)), ('-MF', str(obj)+'.d'), ('-MT', str(obj))]:
                 if flag in cc: cc[cc.index(flag)+1] = value
             compile_log = directory/(target+'-compile.log')
             with compile_log.open('wb') as log:
                 subprocess.run(cc, cwd=build, stdout=log, stderr=subprocess.STDOUT, check=True)
+            dependencies = verify_compile_dependencies(str(obj)+'.d', build, checkout, juce,
+                identity['targets_detail'][target]['generated_include_manifest'], {source: entry['engine_sha256']})
+            if sha(source) != entry['engine_sha256']:
+                raise ValueError('diagnostic engine changed during compilation')
+            verify_generated_inputs(identity['targets_detail'][target]['generated_include_manifest'],
+                                    relevant_compile_commands(commands[target], target), build, checkout, juce)
             link = [str(obj) if value == old_obj else value for value in links[target]]
             binary = directory/target; link[link.index('-o')+1] = str(binary)
             objects = link_objects(link, build)
             subprocess.run(link, cwd=build, check=True)
             binaries[(name, target)] = binary
             entry['targets'][target] = {'compile': cc, 'compile_log_sha256': sha(compile_log),
+                'dependencies': dependencies, 'dependency_file_sha256': sha(str(obj)+'.d'),
                 'link': link, 'link_objects_sha256': objects, 'binary_sha256': sha(binary)}
         identity['variants'][name] = entry
         print('built', name, tree, flush=True)
@@ -136,6 +169,7 @@ def main():
         if verify_source_tree(checkout, base_head) != spec['source_tree']:
             raise ValueError('base source changed during control execution')
         verify_source_tree(juce, JUCE)
+        verify_fresh_build()
         if any(sha(path) != digest for path, digest in tools.items()):
             raise ValueError('replay tool changed during execution')
         (out/'identity.json').write_text(json.dumps(identity, indent=2)+'\n')

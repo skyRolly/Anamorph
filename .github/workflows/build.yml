@@ -505,11 +505,16 @@ jobs:
       - name: Customer release-note content
         run: python3 scripts/check-release-notes.py
 
+      # Synthetic Git/CMake controls only; no product build or historical DSP
+      # replay is run by this lightweight verification gate.
+      - name: Replay provenance input and result controls
+        run: python3 -B worklogs/dsp-numerical-audit-0102/test_replay_provenance.py
+
       - name: Rosetta diagnostic inert orchestration controls
         run: python3 scripts/diagnose-rosetta-scope.py --self-test --self-test-report rosetta-cleanup-inert.json
 
       - name: Bounded ordinary-user POSIX cleanup cases
-        run: python3 tests/rosetta_cleanup_process_tests.py --report rosetta-cleanup-processes.json
+        run: python3 tests/rosetta_cleanup_handshake_tests.py && python3 tests/rosetta_cleanup_fault_tests.py && python3 tests/rosetta_cleanup_process_tests.py --report rosetta-cleanup-processes.json
 
       - name: Tiny Rosetta launch route and outcome inert controls
         run: python3 scripts/diagnose-rosetta-launch.py --self-test --report rosetta-launch-inert.json

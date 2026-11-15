@@ -135,3 +135,33 @@ container; a separate host attempt could not run two configure/build cases
 because `cmake` was absent. Both logs are retained in
 `replay-final-2026-11-14/`. The host attempt is an environment failure, not a
 product-test or negative-control result.
+
+### Diagnostic path and compiler-input boundaries (2026-11-15)
+
+The supported diagnostic patch model is **tracked regular-file contents only**.
+Additions, deletions, renames, executable-mode changes, symlinks and type changes
+are rejected; a fresh source tree or a separately reviewed full-build procedure
+is required for those experiments. This restriction closes the case where a
+path removed by an expected diagnostic tree remains in the checkout and is
+still tracked by the base index. Existing content-only patches remain supported.
+
+The shared runners snapshot the complete build-owned explicit include trees
+used by the probe and engine compilation commands, reject unexpected additions
+or changes, and record compiler dependency files. Probe packets are checked as
+complete copied trees; relocated engine variants search their original source
+quote-include directory before generated `-I` directories. Response files,
+forced includes and unrecognized external include roots are outside the
+supported model. Existing receipts without generated-input manifests are
+refused for controlled relinking and require a new fresh build. Compiler,
+implicit toolchain headers, `/usr/include`, `/usr/local/include`, `/usr/lib`,
+system libraries, local Git configuration, filesystem and no concurrent
+writers remain trust premises; these checks do not attest to those premises.
+
+Reviewed run specifications may declare `stdout_contains` markers and
+`required_artifacts` paths, with optional expected SHA-256 digests. Required
+artifacts must not preexist the run, must be regular nonempty files by default,
+and are hashed and rechecked. A run with no declared artifacts or markers is
+explicitly labelled **exit-only**: exit and streams do not prove its numerical
+oracle, workload premises or undeclared side files. Historical observations
+and original manifests are not changed. The expanded synthetic guards run in
+source-lint without a product rebuild; actual product replays remain separate.
