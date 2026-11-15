@@ -1,0 +1,140 @@
+{
+  "purpose": "Candidate repeated recovery instruction counts with direct observers for processed dry bank, reset state and sanitized output; observers/injection outside collection.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "2cc679a22948e145f044a922b274cf0af314b55e",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "recovery-cost",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-recovery-instruction-probe-v2.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "recovery-cost",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-normal"
+      ],
+      "args": [
+        "0",
+        "0"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "injected=0",
+        "recovered_blocks=0",
+        "wrapped_blocks=0",
+        "nonfinite_output=0",
+        "active_blocks=256",
+        "reset_blocks=0",
+        "sanitized_blocks=0"
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-normal"
+        }
+      ]
+    },
+    {
+      "program": "recovery-cost",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-recovery"
+      ],
+      "args": [
+        "1",
+        "0"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "injected=1",
+        "recovered_blocks=256",
+        "wrapped_blocks=0",
+        "nonfinite_output=0",
+        "active_blocks=256",
+        "reset_blocks=256",
+        "sanitized_blocks=256"
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-recovery"
+        }
+      ]
+    },
+    {
+      "program": "recovery-cost",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-wrapped-normal"
+      ],
+      "args": [
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "injected=0",
+        "recovered_blocks=0",
+        "wrapped_blocks=256",
+        "nonfinite_output=0",
+        "active_blocks=256",
+        "reset_blocks=0",
+        "sanitized_blocks=0"
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-wrapped-normal"
+        }
+      ]
+    },
+    {
+      "program": "recovery-cost",
+      "prefix": [
+        "valgrind",
+        "--tool=callgrind",
+        "--collect-atstart=no",
+        "--callgrind-out-file={out}/callgrind-wrapped-recovery"
+      ],
+      "args": [
+        "1",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks",
+        "injected=1",
+        "recovered_blocks=256",
+        "wrapped_blocks=256",
+        "nonfinite_output=0",
+        "active_blocks=256",
+        "reset_blocks=256",
+        "sanitized_blocks=256"
+      ],
+      "required_artifacts": [
+        {
+          "path": "callgrind-wrapped-recovery"
+        }
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "4ed9b10db4031d4d30d238ce3d7d1844f7c4b4c1",
+    "path": "worklogs/review-closure-0102/h4-consumption-candidate.patch",
+    "sha256": "820728b46738e6fae6179134cf0f355ccf2019202a1f1c1fdd69c88a0bf82777",
+    "purpose": "Maintain dry bank; check actually processed banks and allpass states; sanitize dry samples before consumption."
+  }
+}

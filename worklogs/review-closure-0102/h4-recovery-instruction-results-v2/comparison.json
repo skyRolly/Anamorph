@@ -1,0 +1,33 @@
+{
+  "scope": "repeated injected state; not natural reachability, timing, or worst-case proof",
+  "rows": [
+    {
+      "case": "callgrind-normal",
+      "instructions": 37307112,
+      "per_block": 145730.90625,
+      "per_sample": 1138.522705078125
+    },
+    {
+      "case": "callgrind-recovery",
+      "instructions": 37337064,
+      "per_block": 145847.90625,
+      "per_sample": 1139.436767578125
+    },
+    {
+      "case": "callgrind-wrapped-normal",
+      "instructions": 76813717,
+      "per_block": 300053.58203125,
+      "per_sample": 2344.1686096191406
+    },
+    {
+      "case": "callgrind-wrapped-recovery",
+      "instructions": 76843669,
+      "per_block": 300170.58203125,
+      "per_sample": 2345.0826721191406
+    }
+  ],
+  "delta_instructions_per_block": [
+    117.0,
+    117.0
+  ]
+}

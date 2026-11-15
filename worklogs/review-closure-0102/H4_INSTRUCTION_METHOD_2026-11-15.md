@@ -97,3 +97,24 @@ first probe observed the finite resulting state but did not separately record
 the dry-bank mask, exact reset state and sanitized output. A stricter follow-up
 specification records those execution premises before the result is used as
 fully observed candidate recovery cost.
+
+## Observed repeated-recovery cost and object size
+
+A [stricter fresh repeat](h4-recovery-instruction-results-v2/identity.json)
+observed the active dry bank in all 256 blocks, the affected integrator reset
+in all 256 injected blocks, sanitized dry samples, finite output and the actual
+x4 wrapped path in all selected wrapped blocks. Normal/recovery wet checksums
+matched. At four bands/48 kHz/128, the measured totals were 145,730.91 versus
+145,847.91 instructions/block without wrapping, and 300,053.58 versus
+300,170.58 with x4 Drive: **+117 instructions/block** in these repeated
+injected-recovery cases. Per-sample figures and all raw Callgrind artifact
+hashes are in `comparison.json` and the receipt. The inner runner exited zero;
+the disconnected outer client did not retain its shell exit or complete log.
+This is not a natural failure rate, exhaustive worst case, wall-clock or
+deadline measurement.
+
+The [matched binary DWARF record](h4-multiband-size.json) reports
+`sizeof(MultibandWidth) == 1672` bytes for shipping, A2 and this candidate on
+the measured GCC/x86-64 build; the added mask occupies existing layout space
+in this build. It is not a portable ABI, peak-memory or allocation guarantee.
+The separate candidate allocation test is scoped in the recovery follow-up.

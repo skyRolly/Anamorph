@@ -1,0 +1,11 @@
+==681== Callgrind, a call-graph generating cache profiler
+==681== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==681== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==681== Command: /workspace/h4-recovery-instruction-v2-run/recovery-cost 1 0
+==681== 
+==681== For interactive control, run 'callgrind_control -h'.
+==681== 
+==681== Events    : Ir
+==681== Collected : 37337064
+==681== 
+==681== I   refs:      37,337,064
