@@ -45,3 +45,7 @@ limit is separate from the earlier inaccessible failure-specific Rosetta and
 cleanup artifacts.
 
 The separately fresh-built header-clamp diagnostic at this final source returned the expected **392 checks, 1 failure** while N2-02 remained **720/0**. Both inner and outer runners exited zero. The [receipt and raw streams](clamp/identity.json) preserve the exact tree, patch, build and executable identities.
+
+After `70bbdc22` was pushed, this source's Build & Validate run `43708860006`
+was cancelled by workflow concurrency. Its Microsoft analysis had succeeded;
+its CodeQL result is recorded separately. These are prior-source observations.
