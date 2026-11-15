@@ -19410,3 +19410,12 @@ Before editing, the current H4 packet, ADR-0074, README and TESTING were checked
 ## Separate H4 recovery follow-up audit (2026-11-15)
 
 The previous checkpoint, ADR-0074, testing procedure and coverage inventory were checked for drift before editing. The subsequent nonshipping candidate results include the ordinary oracle, expanded recovery/reference observations, a fade-bank negative control and matched instruction artifacts with data-validator controls. ADR-0074 and TESTING now link the follow-up while retaining Proposed status and the outstanding exceptional-history and native-performance limitations. Existing evidence and production source remain unchanged.
+
+## H4 recovery-control follow-up audit (2026-11-15)
+
+The current follow-up, ADR and testing entries were checked before this update.
+Additional nonshipping negative controls exercise wet/opposite-channel reset,
+raw/aligned-history clearing and missed timely recovery, while a separate direct
+kernel witness bounds a post-check arithmetic concern. TESTING and ADR-0074
+record their actual scope and remaining reachability limitation. Historical
+measurements and the Proposed decision status remain intact.
