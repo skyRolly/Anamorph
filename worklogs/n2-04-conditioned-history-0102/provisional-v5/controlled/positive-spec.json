@@ -1,0 +1,31 @@
+{
+  "purpose": "Positive receipt-controlled N2-04 standalone oracle on the unmodified preparation source, with byte-identical committed test and allocation support.",
+  "source_head": "623d3c33b6e381a34d09dd00fff5a59a6b3838ab",
+  "source_tree": "8460a3d0b16d26e2810fd2b71b81580eefb00734",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n204-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/probe.cpp",
+      "support": [
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/AllocationGuard.h",
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/n2_conditioned_history_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "n204-probe",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "actual wrapped algorithm",
+        "109 checks, 0 failures"
+      ]
+    }
+  ]
+}
