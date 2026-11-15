@@ -1,0 +1,10 @@
+{
+  "purpose": "Fresh exact combined production build for controlled-relink input checks and independent N2 selector liveness.",
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "61c0fa72b2dd0ef59ff96a34b8068f3f7c06c0b3",
+  "targets": ["AnamorphTests"],
+  "runs": [
+    {"program": "AnamorphTests", "args": ["--n2-controls"], "expected_exit": 0, "stdout_contains": ["720 checks, 0 failures"]},
+    {"program": "AnamorphTests", "args": ["--multiband-endpoints"], "expected_exit": 0, "stdout_contains": ["392 checks, 0 failures"]}
+  ]
+}
