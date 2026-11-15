@@ -7767,3 +7767,37 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+## Numerical audit replay provenance controls (2026-11-14)
+
+`python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
+synthetic source-tree, patch, dependency and fresh-build controls, including
+assume-unchanged, skip-worktree, staged edits, ignored inputs, type/mode and
+recorded compiler-environment mismatches. These checks do not themselves execute product DSP. The separate
+fresh baseline and archived diagnostic replay and its identities are recorded
+under `worklogs/dsp-numerical-audit-0102/replay-followup-2026-11-14/`.
+The shared reviewed-specification runner records newly built objects and results;
+unmigrated historical relinkers retain their stated provenance limitations.
+
+
+The guarded replay follow-up also rebuilt the archived baseline and recorded
+`live_toggle` variant against verified source and JUCE trees. Both produced
+byte-identical 16-row outputs compared with the preserved logs; the new receipt
+and build log are under `worklogs/dsp-numerical-audit-0102/replay-final-2026-11-14/`.
+A separate full diagnostic build checked the endpoint clamp mutation against
+combined source `f2686cb5`, preserving the N2-02 selector. The LR4 witness
+runner uses a committed minimal stub and is not a full JUCE or engine run.
+See the worklog inventory for the unverified historical H4 experiments and
+reproduction premises.
+
+### Replay provenance path and generated-input controls (2026-11-15)
+
+The synthetic replay guard suite additionally rejects diagnostic path/mode
+changes, altered or newly shadowing generated include files, changed packet
+inputs and missing required result artifacts. It inspects compiler dependency
+files and deliberately rejects unsupported forced-include/response-file forms.
+The `source-lint` job executes these lightweight Git/CMake controls; it does
+not build the product or replay historical H4 benchmarks. Controlled relinking
+requires a fresh receipt with the generated-input manifest. Actual Anamorph
+relink and isolated mutation controls are separate product evidence, and an
+exit-only run is not an oracle or proof of undeclared side artifacts.

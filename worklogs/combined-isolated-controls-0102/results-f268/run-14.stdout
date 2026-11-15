@@ -1,0 +1,144 @@
+Test 23 extension: Multiband Enable exact stage endpoints and unchanged interiors (N2-03)
+  44100/64 bands2 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/40/40/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands2 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/40/40/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands2 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/40/40/0/0 peak 0
+    observable legacy wet endpoint 26, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands2 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/40/40/0/0 peak 0
+    observable legacy wet endpoint 26, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands3 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/59/59/0/0 peak 0
+    observable legacy wet endpoint 35, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands3 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/59/59/0/0 peak 0
+    observable legacy wet endpoint 35, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands3 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/59/59/0/0 peak 0
+    observable legacy wet endpoint 18, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands3 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/59/59/0/0 peak 0
+    observable legacy wet endpoint 18, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands4 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/55/55/0/0 peak 0
+    observable legacy wet endpoint 36, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands4 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/55/55/0/0 peak 0
+    observable legacy wet endpoint 36, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands4 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/55/55/0/0 peak 0
+    observable legacy wet endpoint 14, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  44100/64 bands4 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/55/55/0/0 peak 0
+    observable legacy wet endpoint 14, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands2 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands2 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands2 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands2 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands3 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands3 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands3 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands3 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands4 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands4 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands4 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/64 bands4 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/1/1/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands2 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/29/29/0/0 peak 0
+    observable legacy wet endpoint 29, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands2 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/29/29/0/0 peak 0
+    observable legacy wet endpoint 28, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands2 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/29/29/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands2 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/29/29/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands3 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/66/66/0/0 peak 0
+    observable legacy wet endpoint 44, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands3 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/66/66/0/0 peak 0
+    observable legacy wet endpoint 44, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands3 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/66/66/0/0 peak 0
+    observable legacy wet endpoint 25, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands3 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/66/66/0/0 peak 0
+    observable legacy wet endpoint 25, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands4 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/73/73/0/0 peak 0
+    observable legacy wet endpoint 56, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands4 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/73/73/0/0 peak 0
+    observable legacy wet endpoint 55, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands4 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/73/73/0/0 peak 0
+    observable legacy wet endpoint 33, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  48000/127 bands4 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/73/73/0/0 peak 0
+    observable legacy wet endpoint 32, non-unity Match ticks 3302, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands2 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/54/54/0/0 peak 0
+    observable legacy wet endpoint 30, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands2 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/54/54/0/0 peak 0
+    observable legacy wet endpoint 30, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands2 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/54/54/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands2 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/54/54/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands3 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/179/179/0/0 peak 0
+    observable legacy wet endpoint 115, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands3 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/179/179/0/0 peak 0
+    observable legacy wet endpoint 115, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands3 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/179/179/0/0 peak 0
+    observable legacy wet endpoint 67, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands3 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/179/179/0/0 peak 0
+    observable legacy wet endpoint 67, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands4 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/150/150/0/0 peak 0
+    observable legacy wet endpoint 86, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands4 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/150/150/0/0 peak 0
+    observable legacy wet endpoint 86, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands4 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/150/150/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 0, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  96000/256 bands4 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/150/150/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 6656, gain-clock mismatch 0
+  [FAIL] N2-03 aligned dry stage: exact endpoints also feed the Level-Match reference
+  Match0 legacy wet endpoint visible/masked by downstream rounding: 750/524
+  Match1 legacy wet endpoint visible/masked by downstream rounding: 747/527
+392 checks, 44 failures

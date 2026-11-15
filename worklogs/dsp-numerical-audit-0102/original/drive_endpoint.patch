@@ -1,0 +1,11 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-drive_endpoint/AnamorphEngine.cpp
+@@ -1317,7 +1317,7 @@
+                 for (int i = 0; i < n; ++i)
+                 {
+                     const float s = driveTanh (g * ch[i]) * c;
+-                    ch[i] += blend * (s - ch[i]);
++                    ch[i] = blend == 1.0f ? s : ch[i] + blend * (s - ch[i]);
+                 }
+         }
+         else if (envStride <= 1)

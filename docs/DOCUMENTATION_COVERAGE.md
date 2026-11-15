@@ -3106,7 +3106,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3899` and `.github/workflows/build.yml:3984`, this round being
+`.github/workflows/build.yml:3904` and `.github/workflows/build.yml:3989`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -3140,7 +3140,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:809` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:814` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -18323,7 +18323,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:571-576` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:576-581` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -19321,6 +19321,32 @@ Test 76 keeps its original assertions and adds `testBypassFiniteEndpointOverflow
 72 valid-result assertions). The numbered inventory stays 76. Endpoint bits,
 10 ms smoother progression and latency are unchanged. D-02 remains independent;
 no graph, thread, parameter, serialization, version or dependency change.
+## 0.10.2 second DSP audit preservation
+
+The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
+
+## Numerical audit replay provenance follow-up (2026-11-14)
+
+The drift check found that the expanded synthetic replay tests and fresh-build
+procedure needed current testing and coverage entries. TESTING and the audit
+README now distinguish synthetic source guards from the newly executed product
+baseline/diagnostic replay and identify the relinkers still outside the shared
+mechanism. Historical reports, original logs and original manifests remain
+unchanged. The guard fails closed on unsupported symlink/submodule trees and
+working-tree transformations; receipt-based relinking also rejects changes in
+the recorded compiler/include environment. It does not attest to the toolchain
+or host.
+
+
+## Review replay closure follow-up — 2026-11-14 UTC
+
+The documentation drift review found that the old per-PR replay instructions
+still accepted unverified reused objects, and that the baseline replay record
+predated the newest guard checks. The dependent PRs disable those entry points;
+the shared inventory and procedures identify which experiments have verified
+replacements and which remain open. Recorded a new full baseline and historical
+diagnostic replay, a fresh combined-source header-clamp control, and the separate
+committed-stub LR4 witness. Historical archived evidence remains unchanged.
 
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 
@@ -19334,3 +19360,14 @@ or unknown cleanup as failure. The existing three production-cleanup cases and
 their budget remain intact. These Linux fixture checks do not establish the cause
 of the earlier hosted failure or native Rosetta cleanup behavior. Earlier audit
 entries and the original historical failure records are retained.
+
+## Diagnostic path and compiler-input provenance review (2026-11-15)
+
+Drift review confirmed that the previous replay description did not rule out
+retained paths deleted by a diagnostic patch or newly shadowing generated
+headers during controlled relinking. The maintained helper now restricts patch
+path/mode changes, records generated include trees and compiler dependencies,
+and checks copied probe inputs. TESTING and CI_CD describe the synthetic
+source-lint gate and the separate need for actual product replay controls.
+Required declared side outputs and markers are recorded; an exit-only result
+is not a numerical oracle. Historical reports, logs and manifests remain intact.

@@ -1,0 +1,34 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-trace/AnamorphEngine.cpp
+@@ -2,6 +2,7 @@
+ #include "MidSide.h"
+ #include <cstdint>
+ #include <cstring>
++#include <cstdio>
+ 
+ namespace anamorph
+ {
+@@ -1990,11 +1991,15 @@
+             const float* cdR = dryScratch.getReadPointer (1);
+             for (int i = 0; i < n; ++i)
+             {
++                const bool auditWasSmoothing = mbEnableBlend.isSmoothing();
++                const float auditWetL = L[i], auditWetR = R[i], auditAlignL = aLw[i], auditAlignR = aRw[i];
+                 const float b = mbEnableBlend.getNextValue();
+                 L[i] = pmL[i] + b * (L[i] - pmL[i]);
+                 R[i] = pmR[i] + b * (R[i] - pmR[i]);
+                 aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
+                 aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);
++                if (auditWasSmoothing && ! mbEnableBlend.isSmoothing())
++                    std::fprintf(stderr,"MB_END b=%g i=%d wetL=%a outL=%a wetR=%a outR=%a preL=%a preR=%a alignL=%a alignOutL=%a alignR=%a alignOutR=%a cleanL=%a cleanR=%a\n", b,i,auditWetL,L[i],auditWetR,R[i],pmL[i],pmR[i],auditAlignL,aLw[i],auditAlignR,aRw[i],cdL[i],cdR[i]);
+             }
+         }
+     }
+@@ -2308,6 +2313,7 @@
+     }
+     if (nonFinite)
+     {
++        std::fprintf(stderr,"HEAL n=%d\n",n);
+         multiband.reset(); mbRunning = p.mbEnable; monoMaker.reset(); soloMonitor.reset();
+         haas.reset(); velvet.reset(); chorus.reset();
+         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
