@@ -34,3 +34,10 @@ fresh header mutation. Hosted Build & Validate run `43708860006`, CodeQL
 Record their actual outcomes as they become available; earlier green checks
 are not final-head results. The prior integration's Build & Validate run was
 cancelled by the newer source; its separate CodeQL and Microsoft checks passed.
+
+The CodeQL run on prior #237 head `10ddde5e` listed current SARIF artifacts,
+but a new read-only download attempt returned HTTP 403 from the artifact store.
+The status of the CodeQL job was accessible; the raw SARIF contents were not.
+The temporary signed download URL is intentionally not retained. This access
+limit is separate from the earlier inaccessible failure-specific Rosetta and
+cleanup artifacts.
