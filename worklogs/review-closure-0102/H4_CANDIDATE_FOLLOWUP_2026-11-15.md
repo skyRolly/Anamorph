@@ -62,3 +62,18 @@ finite affected-channel data after invalid state, including natural exceptional
 arithmetic, fading, glides, Match and repeated latency interactions, are not
 established. Measurements of this exact modified candidate must not borrow the
 historical A2 instruction ratios.
+
+## Matched instruction checkpoint
+
+The [matched instruction record](H4_INSTRUCTION_METHOD_2026-11-15.md) now
+compares shipping H4, historical A2 and this candidate on the same shared host,
+including actual wrapped, fade and sustained-glide premises. At 48 kHz / 128,
+the candidate is approximately +1.68%, +15.41%, +27.53% and +37.01% whole-engine
+instructions for one through four bands at full wet. The actual four-band fade
+workload is +47.70%; x4 Drive is +15.10%; partial Mix is +0.27%; sustained
+glide is +33.86%. Relative to A2 the complete candidate adds 16–386 instructions
+per block in these measured cells. These are not CPU percentages, native
+deadline results, allocation measurements or plugin-capacity estimates. The
+unresolved exceptional-output/history contract still prevents selecting the
+candidate as complete; these cost results inform that decision without accepting
+ADR-0074.
