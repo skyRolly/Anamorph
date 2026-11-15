@@ -1,0 +1,11 @@
+==738== Callgrind, a call-graph generating cache profiler
+==738== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==738== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==738== Command: /workspace/h4-instruction-candidate-run/count 48000 128 4 0 0 1
+==738== 
+==738== For interactive control, run 'callgrind_control -h'.
+==738== 
+==738== Events    : Ir
+==738== Collected : 37307624
+==738== 
+==738== I   refs:      37,307,624
