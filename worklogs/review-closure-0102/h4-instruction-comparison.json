@@ -1,0 +1,216 @@
+{
+  "scope": "recorded instruction artifacts and workload observations, not host or binary attestation",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "juce_head": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "compiler_version": "c++ (Debian 14.2.0-19) 14.2.0",
+  "rows": [
+    {
+      "case": "band1",
+      "checksum": "-0.183678",
+      "baseline": {
+        "instructions": 14264004,
+        "per_block": 55718.765625,
+        "per_sample": 435.3028564453125,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.183678"
+      },
+      "a2": {
+        "instructions": 14499782,
+        "per_block": 56639.7734375,
+        "per_sample": 442.49822998046875,
+        "percent_vs_baseline": 1.6529580333825011,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.183678"
+      },
+      "candidate": {
+        "instructions": 14503878,
+        "per_block": 56655.7734375,
+        "per_sample": 442.62322998046875,
+        "percent_vs_baseline": 1.6816736731145143,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.183678"
+      },
+      "candidate_minus_a2_per_block": 16.0
+    },
+    {
+      "case": "band2",
+      "checksum": "-0.104891",
+      "baseline": {
+        "instructions": 18832810,
+        "per_block": 73565.6640625,
+        "per_sample": 574.7317504882812,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.104891"
+      },
+      "a2": {
+        "instructions": 21719724,
+        "per_block": 84842.671875,
+        "per_sample": 662.8333740234375,
+        "percent_vs_baseline": 15.329172863741514,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.104891"
+      },
+      "candidate": {
+        "instructions": 21735084,
+        "per_block": 84902.671875,
+        "per_sample": 663.3021240234375,
+        "percent_vs_baseline": 15.410732652217064,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.104891"
+      },
+      "candidate_minus_a2_per_block": 60.0
+    },
+    {
+      "case": "band3",
+      "checksum": "-0.116617",
+      "baseline": {
+        "instructions": 23457570,
+        "per_block": 91631.1328125,
+        "per_sample": 715.8682250976562,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.116617"
+      },
+      "a2": {
+        "instructions": 29887012,
+        "per_block": 116746.140625,
+        "per_sample": 912.0792236328125,
+        "percent_vs_baseline": 27.40881515007736,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.116617"
+      },
+      "candidate": {
+        "instructions": 29915684,
+        "per_block": 116858.140625,
+        "per_sample": 912.9542236328125,
+        "percent_vs_baseline": 27.53104434943603,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.116617"
+      },
+      "candidate_minus_a2_per_block": 112.0
+    },
+    {
+      "case": "band4",
+      "checksum": "-0.230445",
+      "baseline": {
+        "instructions": 27229414,
+        "per_block": 106364.8984375,
+        "per_sample": 830.9757690429688,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "a2": {
+        "instructions": 37266664,
+        "per_block": 145572.90625,
+        "per_sample": 1137.288330078125,
+        "percent_vs_baseline": 36.86179217812031,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "candidate": {
+        "instructions": 37307624,
+        "per_block": 145732.90625,
+        "per_sample": 1138.538330078125,
+        "percent_vs_baseline": 37.01221774365031,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "candidate_minus_a2_per_block": 160.0
+    },
+    {
+      "case": "wrapped4",
+      "checksum": "-0.0315073",
+      "baseline": {
+        "instructions": 66736019,
+        "per_block": 260687.57421875,
+        "per_sample": 2036.6216735839844,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073"
+      },
+      "a2": {
+        "instructions": 76773013,
+        "per_block": 299894.58203125,
+        "per_sample": 2342.9264221191406,
+        "percent_vs_baseline": 15.03984527455855,
+        "observation": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073"
+      },
+      "candidate": {
+        "instructions": 76814229,
+        "per_block": 300055.58203125,
+        "per_sample": 2344.1842346191406,
+        "percent_vs_baseline": 15.10160502681468,
+        "observation": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073"
+      },
+      "candidate_minus_a2_per_block": 161.0
+    },
+    {
+      "case": "partial4",
+      "checksum": "-0.230445",
+      "baseline": {
+        "instructions": 37732614,
+        "per_block": 147393.0234375,
+        "per_sample": 1151.5079956054688,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "a2": {
+        "instructions": 37735942,
+        "per_block": 147406.0234375,
+        "per_sample": 1151.6095581054688,
+        "percent_vs_baseline": 0.00881995612602715,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "candidate": {
+        "instructions": 37834758,
+        "per_block": 147792.0234375,
+        "per_sample": 1154.6251831054688,
+        "percent_vs_baseline": 0.27070480725241985,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.230445"
+      },
+      "candidate_minus_a2_per_block": 386.0
+    },
+    {
+      "case": "fade4",
+      "checksum": "-0.306974",
+      "baseline": {
+        "instructions": 33178397,
+        "per_block": 129603.11328125,
+        "per_sample": 1012.5243225097656,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=160; checksum=-0.306974"
+      },
+      "a2": {
+        "instructions": 48941215,
+        "per_block": 191176.62109375,
+        "per_sample": 1493.5673522949219,
+        "percent_vs_baseline": 47.50928141585622,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=160; checksum=-0.306974"
+      },
+      "candidate": {
+        "instructions": 49004959,
+        "per_block": 191425.62109375,
+        "per_sample": 1495.5126647949219,
+        "percent_vs_baseline": 47.70140643021421,
+        "observation": "256 measured blocks; wrapped_blocks=0; fade_blocks=160; checksum=-0.306974"
+      },
+      "candidate_minus_a2_per_block": 249.0
+    },
+    {
+      "case": "glide4",
+      "checksum": "-0.183688",
+      "baseline": {
+        "instructions": 30730089,
+        "per_block": 120039.41015625,
+        "per_sample": 937.8078918457031,
+        "percent_vs_baseline": 0.0,
+        "observation": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688"
+      },
+      "a2": {
+        "instructions": 41095019,
+        "per_block": 160527.41796875,
+        "per_sample": 1254.1204528808594,
+        "percent_vs_baseline": 33.72892932395999,
+        "observation": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688"
+      },
+      "candidate": {
+        "instructions": 41135979,
+        "per_block": 160687.41796875,
+        "per_sample": 1255.3704528808594,
+        "percent_vs_baseline": 33.86221888260721,
+        "observation": "256 measured blocks; proved sustained-glide samples 32768; checksum -0.183688"
+      },
+      "candidate_minus_a2_per_block": 160.0
+    }
+  ]
+}
