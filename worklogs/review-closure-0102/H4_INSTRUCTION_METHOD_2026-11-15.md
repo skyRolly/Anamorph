@@ -118,3 +118,10 @@ The [matched binary DWARF record](h4-multiband-size.json) reports
 the measured GCC/x86-64 build; the added mask did not change the total declared class size
 in this build. It is not a portable ABI, peak-memory or allocation guarantee.
 The separate candidate allocation test is scoped in the recovery follow-up.
+
+The separate [recovery-cost data validator](validate_h4_recovery_cost.py)
+rechecked all four streams, artifacts, exit status, actual bank/reset/sanitize/
+wrapped observations and matching wet checksums. Its two negative controls
+reject altered Callgrind bytes and a missing reset observation even if the
+stdout hash is updated. This validator checks recorded data and premises; it
+does not attest the build environment.
