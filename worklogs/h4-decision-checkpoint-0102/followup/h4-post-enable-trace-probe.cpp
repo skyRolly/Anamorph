@@ -51,7 +51,7 @@ int main() {
     for(bool wrapped:{false,true}) for(bool widen:{false,true}) {
         stats=Stats{}; anamorph::h4DiagnosticWiden=widen; anamorph::h4DiagnosticTrace=nullptr;
         anamorph::EngineParameters p; p.algorithm=anamorph::Algorithm::Haas; p.algoAmount=0;
-        p.mbEnable=true;p.mbBands=2;p.mbFreqLow=1000.0f;p.driveDb=6.0f;p.mix=.4f;
+        p.mbEnable=true;p.mbBands=2;p.mbFreqLow=1000.0f;p.mbFreqMid=1200.0f;p.mbFreqHigh=1500.0f;p.driveDb=6.0f;p.mix=.4f;
         if(wrapped)p.oversample=anamorph::OversampleFactor::x4;
         auto e=std::make_unique<E>();e->primeParameters(p);e->prepare(48000,n);
         juce::AudioBuffer<float> audio(2,n);
