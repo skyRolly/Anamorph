@@ -19325,6 +19325,10 @@ no graph, thread, parameter, serialization, version or dependency change.
 
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
 
+## N2-02 ordinary-duck crossfade targets
+
+The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
+
 N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
 [the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
 exact stage endpoints independently of downstream Mix rounding.
@@ -19353,6 +19357,10 @@ diagnostic replay, a fresh combined-source header-clamp control, and the separat
 committed-stub LR4 witness. Historical archived evidence remains unchanged.
 
 
+## N2-02 replay-entry audit — 2026-11-14 UTC
+
+The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
 ## N2-03 replay-entry and status audit — 2026-11-14 UTC
 
 The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
@@ -19374,7 +19382,10 @@ entries and the original historical failure records are retained.
 
 Drift review confirmed that the previous replay description did not rule out
 retained paths deleted by a diagnostic patch or newly shadowing generated
-headers during controlled relinking. The maintained helper now restricts patch
+headers during controlled relinking. A full-State replay also exposed a parser
+omission for `failure(s)` after the State suite itself passed; TESTING and the
+lightweight positive/negative controls now describe and check both formats.
+The failed runner result remains historical. The maintained helper restricts patch
 path/mode changes, records generated include trees and compiler dependencies,
 and checks copied probe inputs. TESTING and CI_CD describe the synthetic
 source-lint gate and the separate need for actual product replay controls.

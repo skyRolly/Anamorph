@@ -833,7 +833,7 @@ with broken metadata are refused. Archive tests reach a deliberate product-targe
 marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
-`tests/dsp_tests.cpp` has **76 DSP tests** (Test 1 to Test 76; Tests 3 and 4 run as one) and the A/B
+`tests/dsp_tests.cpp` has **77 DSP tests** (Test 1 to Test 77; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
@@ -7768,6 +7768,8 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
 
+DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
+
 ## Multiband Enable stage endpoints (N2-03, Test 23 extension)
 
 `AnamorphTests --multiband-endpoints` selects 392 checks also run by the complete
@@ -7820,6 +7822,10 @@ The synthetic replay guard suite additionally rejects diagnostic path/mode
 changes, altered or newly shadowing generated include files, changed packet
 inputs and missing required result artifacts. It inspects compiler dependency
 files and deliberately rejects unsupported forced-include/response-file forms.
+The combined-control parser also accepts the actual `failure(s)` full-State
+summary and DSP/selector `failure` and `failures`; malformed summaries fail.
+A real integrated run exposed the old omission after State itself passed; its
+failed runner result and raw stream are preserved in the independent record.
 The `source-lint` job executes these lightweight Git/CMake controls; it does
 not build the product or replay historical H4 benchmarks. Controlled relinking
 requires a fresh receipt with the generated-input manifest. Actual Anamorph
@@ -7827,5 +7833,7 @@ relink and isolated mutation controls are separate product evidence, and an
 exit-only run is not an oracle or proof of undeclared side artifacts.
 
 ## Retired review relinkers (2026-11-14)
+
+The old N2-02 relinker is intentionally disabled before any output is created; normal and `python -O` invocations are checked in `worklogs/n2-controls-0102/retired-relinker-controls.json`. Current isolated N2-02 and forced-adoption mutations use the reviewed shared fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
 
 The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.

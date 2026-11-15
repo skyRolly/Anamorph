@@ -45928,6 +45928,8 @@ static int runBulkSwapStress (int trials, int stallUs)
 #include "knob_lifetime_tests.h"
 #include "multiband_frequency_tests.h"
 
+#include "n2_processor_control_tests.h"
+
 int main (int argc, char* argv[])
 {
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
@@ -45980,6 +45982,7 @@ int main (int argc, char* argv[])
     }
 
     juce::ScopedJuceInitialiser_GUI juceInit; // MessageManager for APVTS/processor on this thread
+    if (argc>1 && std::strcmp(argv[1],"--n2-controls")==0) {testProcessorCrossfadedControlsDuringDuck();std::printf("%d checks, %d failures\n",checks,failures);return failures==0?0:1;}
 
     if (argc > 1 && std::strcmp (argv[1], "--multiband-frequency-probe") == 0)
     {
@@ -46482,6 +46485,7 @@ int main (int argc, char* argv[])
     testSpectrumImagerCallbackLifetimes();
     spectrum_imager_lifetime_tests::testSpectrumImagerFrequencyEditorLifetimes();
     knob_lifetime_tests::test();
+    testProcessorCrossfadedControlsDuringDuck();
     multiband_frequency_tests::test();
 
     std::printf ("\n%d checks, %d failure(s)\n", checks, failures);
