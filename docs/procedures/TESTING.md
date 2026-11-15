@@ -7867,3 +7867,7 @@ independent reference. A reset-both mutation changes 4/4 right-state matches to
 0/4. The [decision packet](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md)
 links the inputs and limits. This does not establish complete A2 recovery or
 make the failing-on-main low-frequency oracle mandatory.
+
+## Nonshipping H4 consumption-aware checkpoint (2026-11-15)
+
+The [candidate checkpoint](../../worklogs/h4-decision-checkpoint-0102/README.md) records 40 scoped checks, actual fade-bank and wrapped-latency premises, and the still-unverified first-consumption/history contract. This is diagnostic evidence, not a new mandatory test, production correction, complete recovery claim, or performance result. Test 25 remains unchanged.
