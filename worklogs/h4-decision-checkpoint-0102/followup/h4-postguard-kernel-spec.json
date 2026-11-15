@@ -1,0 +1,26 @@
+{
+  "purpose": "Direct production Multiband Enable kernel overflow with injected finite operands; no claim of actual engine reachability or history publication.",
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "61c0fa72b2dd0ef59ff96a34b8068f3f7c06c0b3",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "postguard-kernel",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-postguard-kernel-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "postguard-kernel",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "from_finite=1 to_finite=1 blend_interior=1 output_finite=0"
+      ]
+    }
+  ]
+}

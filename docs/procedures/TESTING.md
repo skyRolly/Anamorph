@@ -7844,3 +7844,5 @@ The [candidate checkpoint](../../worklogs/h4-decision-checkpoint-0102/README.md)
 ## H4 nonshipping recovery and instruction follow-up (2026-11-15)
 
 The [follow-up](../../worklogs/h4-decision-checkpoint-0102/followup/README.md) records the eight-assertion ordinary oracle, 48 recovery checks, injected-state reference differences and fade-bank negative control. The accompanying data comparator validates required Callgrind artifacts and rejects missing wrapped, fade or glide premises. These are nonshipping experiments; they do not establish complete recovery, representative native timing, or a change to Test 25.
+
+The later isolated negative build also discriminates wet and opposite-channel resets, raw and aligned-history clearing, and omitted timely recovery under injected state. The intermediate history write is not directly traced.

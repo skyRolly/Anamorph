@@ -49,9 +49,9 @@ measurement boundary. The [data comparator](compare_h4_instruction_results.py)
 verified each recorded stream and Callgrind artifact hash, the per-run exits,
 matching checksums and actual wrapped/fade/glide premises; its
 [comparison](h4-instruction-comparison.json) records totals, per-block and
-per-sample values. Three negative controls reject altered Callgrind data and
-unexecuted wrapped, fade and sustained-glide paths even when the changed stdout
-hash is made self-consistent. These data checks are not an attestation of the
+per-sample values. Four negative controls reject an unrelated container exit, altered Callgrind
+data and unexecuted wrapped, fade and sustained-glide paths even when the
+changed stdout hash is made self-consistent. These data checks are not an attestation of the
 compiler or machine. Baseline container exit 0 was recovered independently
 from Docker events; its original host-shell exit and complete combined log are
 unavailable. A2 and candidate runners each exited zero with complete logs.

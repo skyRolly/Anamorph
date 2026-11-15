@@ -19,7 +19,9 @@ def inspect(variant):
         raise ValueError(f'{variant}: missing recorded runs')
     if variant == 'baseline':
         events = [json.loads(line) for line in (root/'docker-events.jsonl').read_text().splitlines()]
-        if not any(event['Action'] == 'die' and event['Actor']['Attributes'].get('exitCode') == '0' for event in events):
+        baseline_container = '9b070b33509d93f4edd80b7077b862451d817add80ef76546a21c3bf6025efa6'
+        if not any(event['Action'] == 'die' and event['Actor']['ID'] == baseline_container
+                   and event['Actor']['Attributes'].get('exitCode') == '0' for event in events):
             raise ValueError('baseline container exit not verified')
     elif (root/'outer.exit').read_text().strip() != '0':
         raise ValueError(f'{variant}: nonzero runner exit')

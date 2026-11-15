@@ -1,0 +1,16 @@
+bands=1 relevant_states=0
+bands=2 relevant_states=4
+bands=3 relevant_states=10
+bands=4 relevant_states=16
+engine=off affected_output_differences=128 max_delta=0.00921214 written_history_differences=128
+FAIL opposite aligned history preserved
+FAIL unwritten aligned history preserved
+engine=off latency=0 retained_aligned=7 finite=1 right_equal=1
+FAIL first consuming output finite and opposite output preserved
+engine=x4-drive affected_output_differences=128 max_delta=0.00838126 written_history_differences=128
+FAIL opposite aligned history preserved
+FAIL unwritten aligned history preserved
+engine=x4-drive latency=6 retained_aligned=7 finite=1 right_equal=0
+FAIL repeated recovery keeps affected finite and opposite output equal
+FAIL repeated recovery keeps affected finite and opposite output equal
+48 checks, 7 failures

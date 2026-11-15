@@ -34,6 +34,15 @@ class ComparatorControls(unittest.TestCase):
         record['runs'][run]['stdout_sha256'] = hashlib.sha256(data).hexdigest()
         identity.write_text(json.dumps(record))
 
+    def test_unrelated_container_exit_is_rejected(self):
+        path = self.data/'docker-events.jsonl'
+        events = [json.loads(line) for line in path.read_text().splitlines()]
+        for event in events:
+            event['Actor']['ID'] = '0'*64
+        path.write_text(''.join(json.dumps(event)+'\n' for event in events))
+        with self.assertRaisesRegex(ValueError, 'container exit not verified'):
+            compare.inspect('baseline')
+
     def test_altered_callgrind_bytes_are_rejected(self):
         path = self.data/'callgrind-band1.gz'
         data = gzip.decompress(path.read_bytes()) + b'changed\n'

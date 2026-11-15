@@ -1,0 +1,11 @@
+bands=1 relevant_states=0
+bands=2 relevant_states=4
+bands=3 relevant_states=10
+bands=4 relevant_states=16
+engine=off affected_output_differences=128 max_delta=0.00921214 written_history_differences=128
+FAIL raw history preserved
+engine=off latency=0 retained_aligned=7 finite=1 right_equal=1
+engine=x4-drive affected_output_differences=122 max_delta=0.00838126 written_history_differences=128
+FAIL raw history preserved
+engine=x4-drive latency=6 retained_aligned=7 finite=1 right_equal=1
+48 checks, 2 failures
