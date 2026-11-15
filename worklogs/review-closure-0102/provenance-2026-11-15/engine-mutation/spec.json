@@ -1,0 +1,32 @@
+{
+  "purpose": "Receipt-controlled engine-only relink with the independently isolated N2-02 restoration; the original injection probe is a relink liveness check, not the N2-02 regression.",
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "c47a60af3f2f35d6306a275200e1cd637341d6fb",
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/n2-only.patch",
+    "sha256": "b293dabc2bbf21a1f73b3edf32010337ca7fe9a80fd1bb16a62d1a546060f33d",
+    "purpose": "Restore only ordinary bypass and multiband destination preservation in copyContinuous."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "runs": [
+    {
+      "program": "h4-reentry-injection",
+      "args": [
+        "off",
+        "inject"
+      ],
+      "expected_exit": 0
+    }
+  ],
+  "probes": [
+    {
+      "name": "h4-reentry-injection",
+      "target": "AnamorphTests",
+      "commit": "7db4744bf0b7c314bfeeda0435f0177f284b9ff6",
+      "path": "worklogs/review-closure-0102/h4-reentry-injection-probe.cpp"
+    }
+  ]
+}
