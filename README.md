@@ -280,4 +280,6 @@ Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numeri
 
 0.10.2 H4 evidence: [dry-state decision package and verification boundary](worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md), Proposed ADR-0074; production H4 remains unchanged.
 
-0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). The N2 correction and H4 documentation PRs remain open for owner review; the independent cleanup fixture PR #242 has been merged.
+0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). The staged integration record tracks the owner-authorized N2 correction and H4 documentation merges; the independent cleanup fixture PR #242 was merged earlier.
+
+Nonshipping H4 recovery-policy and N2-09 evidence: [decision follow-up](worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md). ADR-0074 remains Proposed.

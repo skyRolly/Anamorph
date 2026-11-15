@@ -23,6 +23,15 @@ finite, representable results for its first sample. This is a separate wet-path
 numerical defect, not the H4 dry-state transient; no production correction is
 included. [Reproduction and limits](../worklogs/h4-review-followup-0102/README.md).
 
+N2-09 (P3 review assessment): on reviewed production integration `70bbdc22`,
+an actual Multiband Disable fade at partial Mix and extreme finite input made
+the historical interior aligned-dry Enable interpolation overflow between
+finite opposite-sign operands. The invalid sample was written/read through
+aligned history and the existing output guard scrubbed it. This is distinct
+from N2-03's corrected endpoints and N2-08's wet LR4 overflow. A diagnostic
+fallback also exposed a later dry-source interpolation overflow, whose
+independent unpatched reachability remains unproved. [Trace and limitations](../worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md).
+
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is
 fixed, remove it here and (if notable) add a `POSTMORTEMS.md` entry.

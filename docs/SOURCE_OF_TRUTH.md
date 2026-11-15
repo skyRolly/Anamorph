@@ -224,3 +224,5 @@ The [H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) and `workl
 The [subsequent H4 follow-up](../worklogs/h4-decision-checkpoint-0102/followup/README.md) is supporting evidence for the still-Proposed decision; its instruction counts do not establish native deadline behavior or authorize production changes.
 
 The [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md) records independent PR heads, combined-source checks and explicit H4 owner-decision limits. It is supporting execution evidence, not merge/release or architecture approval.
+
+The H4 [recovery-policy comparison](../worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) and N2-09 traces are supporting diagnostic evidence. They do not accept ADR-0074 or authorize a production implementation.

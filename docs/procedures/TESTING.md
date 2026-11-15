@@ -7853,3 +7853,8 @@ recovery blocks, including actual x4 wrapping. Its Callgrind counts and raw
 artifacts are scoped in the follow-up; this is not a natural-event or deadline
 bound. The candidate's ordinary partial-Mix/Match allocation guard is a
 separate executed test.
+
+
+## H4 aligned-history and Enable overflow follow-up (2026-11-15)
+
+Nonshipping [history-boundary controls](../../worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observe actual aligned writes, latency-offset reads, a wet-twin Mix reconstruction and affected-channel divergence after injected invalid state. A separate [unpatched-production trace](../../worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) demonstrates the extreme finite N2-09 Enable interpolation overflow and actual history read/self-heal at zero and x4 latency. Its widening switch is diagnostic, not an accepted production fix. These tests do not establish the full H4 recovery contract, representative native timing, or a change to Test 25.

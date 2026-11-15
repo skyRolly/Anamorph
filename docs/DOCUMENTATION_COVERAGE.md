@@ -19428,3 +19428,15 @@ The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewe
 
 The follow-up method, ADR and coverage inventory were checked before editing. A fresh, directly observed injected-recovery instruction comparison and matched compiled class-size record are linked in the nonshipping follow-up; the ADR scopes them to their workload and retains the native timing and complete recovery limitations.
 The recovery-cost artifact validator and two negative controls are linked from the same method record; TESTING describes their nonshipping execution scope.
+
+
+## H4 history and N2-09 trace audit (2026-11-15)
+
+Before editing, the Proposed ADR and H4 follow-up still described the original
+standalone post-Enable witness as lacking natural reachability. The new
+source-bound production trace establishes finite-endpoint overflow and actual
+aligned-history publication/read for a specific extreme input, while the later
+dry-source failure remains demonstrated under a diagnostic fallback only.
+Updated the current H4 decision, TESTING, known-issue and repository index
+references; preserved the earlier witness and original measurements. The new
+policy comparison is nonshipping and does not accept ADR-0074.

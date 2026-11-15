@@ -89,11 +89,13 @@ uses injected finite operands `-FLT_MAX` and `FLT_MAX` with an interior blend
 `0.5` and observes a non-finite result. The kernel's historical interior
 arithmetic is intentionally unchanged by N2-03. Thus pre-interpolation
 finiteness alone cannot prove that every subsequently published history sample
-is finite for all possible operands. The witness does **not** establish that
-this operand pair naturally occurs in the engine, that a particular ring write
-retains it, or that it creates a distinct production defect; those are
-unverified. The candidate's full recovery contract needs either a justified
-input bound or an actual post-interpolation/history control. The first probe
+is finite for all possible operands. That original witness alone did **not**
+establish natural engine reachability or an actual history write. Subsequent
+[unpatched-production tracing](shipping-trace-70bb-results/README.md) did
+establish finite-operand overflow, aligned writes/reads and final self-heal for
+a distinct extreme-input case, now N2-09. Its source is reviewed integration
+`70bbdc22`, not yet the final staged main. The candidate's full recovery
+contract must also protect the later dry-source interpolation. The first probe
 compile failed because its namespace collided with the POSIX `access` symbol;
 that failed attempt is retained separately, and the corrected probe and runner
 exited zero.
@@ -122,3 +124,25 @@ reachability of the injected state or an acceptable affected-channel recovery
 policy. The nonshipping faults are not production changes.
 
 A stricter [repeated-recovery instruction experiment](H4_INSTRUCTION_METHOD_2026-11-15.md) observed active dry processing, affected-state reset and sanitized samples in all 256 injected blocks. It measured +117 instructions per 128-sample block for this artificial repeated recovery, both without wrapping and with actual x4 Drive wrapping, relative to the same candidate's normal workload. This is not a natural event rate or worst-case deadline. GCC/x86-64 DWARF reports the same 1,672-byte `MultibandWidth` size in the three matched builds; that is not a portable peak-memory or ABI guarantee.
+
+
+## Recovery policy and actual history checkpoint — 2026-11-15
+
+The [recovery policy comparison](H4_RECOVERY_POLICY_2026-11-15.md) separates
+existing contracts, the owner's design objectives, and an unapproved
+exceptional-output policy. A [one-sample boundary trace](history-step-70bb-results/README.md)
+observed actual aligned writes, latency-offset reads and first Mix consumption:
+injected invalid state changed 32/32 affected history samples and 32/26 output
+samples at zero/x4-six-sample latency. Opposite-channel and checked unrelated
+histories remained equal in that case. A finite history is not a clean-reference
+history. The result is injection evidence, not natural reachability.
+
+The [candidate trace](post-enable-trace-v2-70bb-results/README.md) and
+[unpatched production trace](shipping-trace-70bb-results/README.md) independently
+identify N2-09: finite opposite-sign dry Enable endpoints can overflow during a
+fade, enter aligned history and trigger self-heal. A diagnostic exceptional-only
+widening prevented those invalid writes in the selected case but exposed a later
+finite-endpoint dry-source interpolation overflow. The latter remains a
+counterfactual observation until independently reproduced without the fallback.
+No production correction or exceptional policy is authorized; ADR-0074 remains
+Proposed.
