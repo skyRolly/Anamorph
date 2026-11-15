@@ -77,3 +77,23 @@ a separately isolated scan instruction count. No real-time timing, maximum
 callback duration, re-entry spike, Match behavior, exceptional recovery cost,
 allocation or memory measurement is established by this table. The small scan
 increment does not remove the much larger recurring warm-bank cost.
+
+## Preliminary repeated-recovery cost
+
+A separate candidate-only [fresh instruction experiment](h4-recovery-instruction-results-v1/identity.json)
+compared steady full wet against injection of one NaN dry integrator before
+each of 256 measured blocks, with injection and observers outside the counted
+region. The candidate reported finite dry state after each injection, finite
+wet output and matching normal/recovery checksums; actual x4 wrapping was
+observed in all selected wrapped blocks. At four bands/48 kHz/128, normal and
+injected-recovery totals were 145,730.91 versus 145,849.91 instructions/block
+without wrapping and 300,053.58 versus 300,172.58 with x4 Drive: **+119
+instructions/block** in each measured case. Both runner exits were zero and
+raw Callgrind files and identities are retained.
+
+This is repeated fault injection, not a natural event rate, worst-case bound,
+CPU time, callback deadline or proof that every recovery path is correct. The
+first probe observed the finite resulting state but did not separately record
+the dry-bank mask, exact reset state and sanitized output. A stricter follow-up
+specification records those execution premises before the result is used as
+fully observed candidate recovery cost.
