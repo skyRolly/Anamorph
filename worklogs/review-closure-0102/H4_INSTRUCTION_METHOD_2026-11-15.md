@@ -115,6 +115,6 @@ deadline measurement.
 
 The [matched binary DWARF record](h4-multiband-size.json) reports
 `sizeof(MultibandWidth) == 1672` bytes for shipping, A2 and this candidate on
-the measured GCC/x86-64 build; the added mask occupies existing layout space
+the measured GCC/x86-64 build; the added mask did not change the total declared class size
 in this build. It is not a portable ABI, peak-memory or allocation guarantee.
 The separate candidate allocation test is scoped in the recovery follow-up.
