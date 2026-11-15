@@ -1,0 +1,3 @@
+d502a95d6a9f6ee8e5f381b323e7f145bc6f1916e931589094187d7637437476  src/dsp/AnamorphEngine.cpp
+24af3558a514b49596f49783379c9ce109d84b607d2e79e523cbab8e99af052d  tests/dsp_tests.cpp
+43e624a3d6ff7eeee0b16b84e66392d164d9b69edb948cc7a1b23a32fa09721e  tests/n2_conditioned_history_tests.h
