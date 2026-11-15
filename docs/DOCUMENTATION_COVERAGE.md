@@ -19423,3 +19423,8 @@ measurements and the Proposed decision status remain intact.
 ## Link later H4 evidence from dated checkpoint (2026-11-15)
 
 The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewed before this update. The initial unmeasured-cost statement is now explicitly dated, and the later separate nonshipping recovery and instruction evidence is linked without treating it as an accepted architecture decision. Historical measurements and production source are unchanged.
+
+## H4 exceptional-cost evidence audit (2026-11-15)
+
+The follow-up method, ADR and coverage inventory were checked before editing. A fresh, directly observed injected-recovery instruction comparison and matched compiled class-size record are linked in the nonshipping follow-up; the ADR scopes them to their workload and retains the native timing and complete recovery limitations.
+The recovery-cost artifact validator and two negative controls are linked from the same method record; TESTING describes their nonshipping execution scope.

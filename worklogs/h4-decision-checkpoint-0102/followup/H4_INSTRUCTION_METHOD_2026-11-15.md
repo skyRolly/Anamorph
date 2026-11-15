@@ -126,3 +126,74 @@ dominant two-to-four-band warming cost. For the measured four-band full-wet
 case, the whole consumption-aware implementation adds about 160 instructions
 per block over A2 while the total candidate increase over shipping is about
 39,368 per block; reducing the scan alone cannot remove most of that cost.
+
+The included comparator is deliberately tied to the archived artifact layout
+and this run's baseline container identity. It validates those committed
+measurements; a new owner execution needs a reviewed comparison of its own
+receipts, hashes, workload observers and exit statuses rather than assuming the
+archival comparator attests the new run.
+
+## Preliminary repeated-recovery cost
+
+A separate candidate-only [fresh instruction experiment](h4-recovery-instruction-results-v1/identity.json)
+compared steady full wet against injection of one NaN dry integrator before
+each of 256 measured blocks, with injection and observers outside the counted
+region. The candidate reported finite dry state after each injection, finite
+wet output and matching normal/recovery checksums; actual x4 wrapping was
+observed in all selected wrapped blocks. At four bands/48 kHz/128, normal and
+injected-recovery totals were 145,730.91 versus 145,849.91 instructions/block
+without wrapping and 300,053.58 versus 300,172.58 with x4 Drive: **+119
+instructions/block** in each measured case. Both runner exits were zero and
+raw Callgrind files and identities are retained.
+
+This is repeated fault injection, not a natural event rate, worst-case bound,
+CPU time, callback deadline or proof that every recovery path is correct. The
+first probe observed the finite resulting state but did not separately record
+the dry-bank mask, exact reset state and sanitized output. A stricter follow-up
+specification records those execution premises before the result is used as
+fully observed candidate recovery cost.
+
+## Observed repeated-recovery cost and object size
+
+A [stricter fresh repeat](h4-recovery-instruction-results-v2/identity.json)
+observed the active dry bank in all 256 blocks, the affected integrator reset
+in all 256 injected blocks, sanitized dry samples, finite output and the actual
+x4 wrapped path in all selected wrapped blocks. Normal/recovery wet checksums
+matched. At four bands/48 kHz/128, the measured totals were 145,730.91 versus
+145,847.91 instructions/block without wrapping, and 300,053.58 versus
+300,170.58 with x4 Drive: **+117 instructions/block** in these repeated
+injected-recovery cases. Per-sample figures and all raw Callgrind artifact
+hashes are in `comparison.json` and the receipt. The inner runner exited zero;
+the disconnected outer client did not retain its shell exit or complete log.
+This is not a natural failure rate, exhaustive worst case, wall-clock or
+deadline measurement.
+
+The [matched binary DWARF record](h4-multiband-size.json) reports
+`sizeof(MultibandWidth) == 1672` bytes for shipping, A2 and this candidate on
+the measured GCC/x86-64 build; the added mask did not change the total declared class size
+in this build. It is not a portable ABI, peak-memory or allocation guarantee.
+The separate candidate allocation test is scoped in the recovery follow-up.
+
+The separate [recovery-cost data validator](validate_h4_recovery_cost.py)
+rechecked all four streams, artifacts, exit status, actual bank/reset/sanitize/
+wrapped observations and matching wet checksums. Its two negative controls
+reject altered Callgrind bytes and a missing reset observation even if the
+stdout hash is updated. This validator checks recorded data and premises; it
+does not attest the build environment.
+
+After establishing that the injected-state recovery policy is relevant to the
+candidate under review, the observed recovery instruction workload can also be
+reproduced in a fourth fresh output directory:
+
+```sh
+python3 worklogs/dsp-numerical-audit-0102/replay_experiment.py \
+  --checkout /absolute/candidate-checkout --juce /absolute/JUCE-905 \
+  --spec-commit 35caf35b712db7a4908fffbd7c887bd5f968f745 \
+  --spec-path worklogs/review-closure-0102/h4-recovery-instruction-v2-spec.json \
+  --out /absolute/new-recovery-output
+```
+
+The raw runner emits Callgrind files and identity hashes; the checked-in
+recovery validator targets the archived compressed layout and must be adapted
+or equivalently reviewed for new outputs. Confirm all 256 active/reset/sanitize
+observations and actual wrapped execution before comparing counts.

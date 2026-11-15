@@ -1,0 +1,21 @@
+{
+  "scope": "GCC DWARF declared sizeof MultibandWidth in the matched x86-64 Release binaries, not peak memory or allocation behavior",
+  "readelf": "GNU readelf (GNU Binutils for Debian) 2.44",
+  "rows": [
+    {
+      "variant": "baseline",
+      "binary_sha256": "e875cfff4c08529814ffad9d884f6a9954c797f6ab9ad968b947fe073bbcedba",
+      "dwarf_multiband_width_bytes": 1672
+    },
+    {
+      "variant": "a2",
+      "binary_sha256": "107519a19d13940fe7203c862360025f6dff9d9346513f38eb2a3fd257f5fc43",
+      "dwarf_multiband_width_bytes": 1672
+    },
+    {
+      "variant": "candidate",
+      "binary_sha256": "73fdc7da5eb0af59d67ea5f920d55084e15d0d0829fe8d915d826d219bb6bc85",
+      "dwarf_multiband_width_bytes": 1672
+    }
+  ]
+}

@@ -120,3 +120,5 @@ zero-latency and actual x4 wrapped cases. The delayed-detection control does
 not directly trace the intermediate ring write, and none establishes natural
 reachability of the injected state or an acceptable affected-channel recovery
 policy. The nonshipping faults are not production changes.
+
+A stricter [repeated-recovery instruction experiment](H4_INSTRUCTION_METHOD_2026-11-15.md) observed active dry processing, affected-state reset and sanitized samples in all 256 injected blocks. It measured +117 instructions per 128-sample block for this artificial repeated recovery, both without wrapping and with actual x4 Drive wrapping, relative to the same candidate's normal workload. This is not a natural event rate or worst-case deadline. GCC/x86-64 DWARF reports the same 1,672-byte `MultibandWidth` size in the three matched builds; that is not a portable peak-memory or ABI guarantee.
