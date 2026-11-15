@@ -17,6 +17,9 @@ import subprocess
 from replay_provenance import JUCE, cache_values, git, verify_source_tree
 from rebuild_probe import link_objects, sha, version
 from replay_experiment import blob
+from compiler_inputs import (directory_manifest, prepare_artifacts, relevant_compile_commands, validate_artifacts,
+                             verify_compile_dependencies, verify_generated_inputs, verify_relocated_source,
+                             verify_retained_artifacts)
 
 
 BUILD_ENV_KEYS = ('PATH', 'CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'CPATH',
@@ -59,7 +62,7 @@ def main():
     recorded = receipt['targets_detail'][target]
     tools = {str(path): sha(path) for path in (Path(__file__).resolve(),
         Path(__file__).with_name('replay_provenance.py'), Path(__file__).with_name('rebuild_probe.py'),
-        Path(__file__).with_name('replay_experiment.py'))}
+        Path(__file__).with_name('replay_experiment.py'), Path(__file__).with_name('compiler_inputs.py'))}
 
     def verify_build():
         verify_build_environment(receipt['environment'])
@@ -80,6 +83,8 @@ def main():
         commands = subprocess.check_output(['ninja', '-C', str(build), '-t', 'commands', target], text=True).splitlines()
         if commands != recorded['ninja_commands']:
             raise ValueError('effective generated build commands differ from receipt')
+        verify_generated_inputs(recorded.get('generated_include_manifest'),
+                                relevant_compile_commands(commands, target), build, checkout, juce)
         for filename, digest in recorded['link_objects_sha256'].items():
             path = Path(filename).resolve()
             if not path.is_relative_to(build) or not path.is_file() or sha(path) != digest:
@@ -112,6 +117,9 @@ def main():
         destination.parent.mkdir(parents=True, exist_ok=True); destination.write_bytes(data)
         inputs[commit+':'+name] = hashlib.sha256(data).hexdigest()
     source = packet/probe['path']
+    packet_identity = directory_manifest(packet)
+    verify_relocated_source(source)
+    packet_files = {packet/name: sha(packet/name) for name in [probe['path'], *probe.get('support', [])]}
     cc = next(shlex.split(line) for line in commands if line.endswith('/tests/dsp_tests.cpp') and ' -c ' in line)
     link = next(shlex.split(line) for line in commands if ' -o '+target+'_artefacts/Release/'+target+' ' in line)
     if link[:2] == [':', '&&'] and link[-2:] == ['&&', ':']:
@@ -120,6 +128,11 @@ def main():
     for flag, value in [('-o', str(obj)), ('-c', str(source)), ('-MF', str(obj)+'.d'), ('-MT', str(obj))]:
         if flag in cc: cc[cc.index(flag)+1] = value
     subprocess.run(cc, cwd=build, check=True)
+    probe_dependencies = verify_compile_dependencies(str(obj)+'.d', build, checkout, juce,
+        recorded['generated_include_manifest'], packet_files)
+    if directory_manifest(packet) != packet_identity:
+        raise ValueError('probe packet changed during compilation')
+    verify_build()
     link = [str(obj) if value == old else value for value in link]
     engine_record = None
     if 'patch' in spec:
@@ -143,9 +156,15 @@ def main():
         for flag, value in [('-o', str(engine_obj)), ('-c', str(engine)), ('-MF', str(engine_obj)+'.d'), ('-MT', str(engine_obj))]:
             if flag in ec: ec[ec.index(flag)+1] = value
         subprocess.run(ec, cwd=build, check=True)
+        engine_dependencies = verify_compile_dependencies(str(engine_obj)+'.d', build, checkout, juce,
+            recorded['generated_include_manifest'], {engine: sha(engine)}, [diagnostic])
+        if verify_source_tree(diagnostic, spec['source_head'], patch, patch_spec['sha256']) != tree:
+            raise ValueError('diagnostic source changed during compilation')
+        verify_build()
         link = [str(engine_obj) if value == previous else value for value in link]
         engine_record = {'source_tree': tree, 'checkout': str(diagnostic), 'source_sha256': sha(engine),
-                         'patch_sha256': patch_spec['sha256'], 'compile': ec}
+                         'patch_sha256': patch_spec['sha256'], 'compile': ec,
+                         'dependencies': engine_dependencies, 'dependency_file_sha256': sha(str(engine_obj)+'.d')}
     elif spec['source_tree'] != base_tree:
         raise ValueError('unpatched experiment source differs from recorded build')
     binary = out/probe['name']; link[link.index('-o')+1] = str(binary)
@@ -155,7 +174,9 @@ def main():
         'receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(), 'spec_commit': a.spec_commit,
         'spec_path': a.spec_path, 'spec_sha256': hashlib.sha256(spec_bytes).hexdigest(),
         'source_head': spec['source_head'], 'source_tree': spec['source_tree'], 'juce_head': JUCE,
-        'build': str(build), 'tool_sha256': tools, 'packet_inputs': inputs, 'probe_compile': cc,
+        'build': str(build), 'tool_sha256': tools, 'packet_inputs': inputs,
+        'packet_manifest': packet_identity, 'probe_compile': cc, 'probe_dependencies': probe_dependencies,
+        'probe_dependency_file_sha256': sha(str(obj)+'.d'),
         'engine': engine_record, 'link': link, 'link_objects_sha256': objects,
         'binary_sha256': sha(binary), 'runs': []}
     failed = False
@@ -163,13 +184,18 @@ def main():
         if run['program'] != probe['name']:
             raise ValueError('run selects a different program')
         command = [str(binary), *run.get('args', [])]
+        prepare_artifacts(out, run)
         result = subprocess.run(command, cwd=out, capture_output=True)
         stdout, stderr = out/(f'run-{i}.stdout'), out/(f'run-{i}.stderr')
         stdout.write_bytes(result.stdout); stderr.write_bytes(result.stderr)
         record['runs'].append({'argv': command, 'exit': result.returncode,
-            'expected_exit': run['expected_exit'], 'stdout_sha256': sha(stdout), 'stderr_sha256': sha(stderr)})
+            'expected_exit': run['expected_exit'], 'stdout_sha256': sha(stdout), 'stderr_sha256': sha(stderr),
+            'result_validation': validate_artifacts(out, run, result.stdout)})
         failed |= result.returncode != run['expected_exit']
         verify_build()
+        verify_retained_artifacts(out, record['runs'])
+        if directory_manifest(packet) != packet_identity:
+            raise ValueError('probe packet changed during execution')
         if sha(binary) != record['binary_sha256'] or link_objects(link, build) != objects:
             raise ValueError('relinked executable or inputs changed')
         if engine_record and verify_source_tree(diagnostic, spec['source_head'], patch, patch_spec['sha256']) != tree:

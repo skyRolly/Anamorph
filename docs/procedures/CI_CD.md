@@ -2492,13 +2492,21 @@ The existing inert `--self-test` includes the real production command/cleanup
 path with fake dependencies and a rejecting no-op cleanup control. The separate
 `python3 tests/rosetta_cleanup_process_tests.py --report <private-report-path>`
 runs at most three harmless standard-Python fixture cases under an ordinary
-Linux UID, within 20 seconds total. Only recorded fixture PIDs and their owned
-new-session PGID are eligible targets. A process-local subreaper role in the
-fixture harness adopts/reaps its own known orphan child and is restored; no
+Linux UID, within 20 seconds total. Only the fixture's owned new-session PGID
+is eligible for group signals. A process-local subreaper role in the
+fixture harness adopts/reaps its own same-group orphan child and is restored; no
 host security/permission setting changes. Independent bounded finally cleanup
 protects against a broken tested implementation. Source-lint retains both
 inert and process reports as Anamorph-POSIX-cleanup-validation. These tests
-establish measured Linux same-group behavior, not complete macOS LLDB cleanup.
+establish measured Linux same-group behavior, not complete macOS LLDB cleanup. The fixture's
+child publishes readiness only after its parent has finished writing its identity.
+The source gate also runs `tests/rosetta_cleanup_handshake_tests.py`, whose observer
+explicitly acknowledges the legacy readiness boundary or the corrected child's
+gate before permitting publication, and `tests/rosetta_cleanup_fault_tests.py`,
+which exercises unavailable identity, timeouts and cleanup errors. The independent
+finalizer establishes ownership before signaling, reaps only fixture-group
+children and fails on unknown cleanup. All controls restore their process-local
+subreaper and use bounded isolated sessions; they do not change host policy.
 
 Recorded native run 40285821331/job 121449104663 at de31f2c0 remains failed:
 direct focused completion, then a 120-second LLDB timeout. Its driver reported
@@ -2691,3 +2699,12 @@ is separate evidence and never replaces those complete final-head gates.
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+### Replay provenance guard controls (2026-11-15)
+
+`source-lint` runs the synthetic `test_replay_provenance.py` Git and small
+CMake/Ninja controls, including diagnostic path restrictions, generated include
+shadowing, compiler-dependency and declared-result checks. This adds no product
+DSP build or historical benchmark to the lint lane. Actual receipt-controlled
+replays and platform validation are separately recorded; the synthetic gate
+cannot establish their numerical results or attest to system toolchains.

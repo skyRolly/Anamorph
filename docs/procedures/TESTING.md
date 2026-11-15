@@ -7540,13 +7540,25 @@ The existing inert `--self-test` includes the real production command/cleanup
 path with fake dependencies and a rejecting no-op cleanup control. The separate
 `python3 tests/rosetta_cleanup_process_tests.py --report <private-report-path>`
 runs at most three harmless standard-Python fixture cases under an ordinary
-Linux UID, within 20 seconds total. Only recorded fixture PIDs and their owned
-new-session PGID are eligible targets. A process-local subreaper role in the
-fixture harness adopts/reaps its own known orphan child and is restored; no
+Linux UID, within 20 seconds total. Only the fixture's owned new-session PGID
+is eligible for group signals. A process-local subreaper role in the
+fixture harness adopts/reaps its own same-group orphan child and is restored; no
 host security/permission setting changes. Independent bounded finally cleanup
 protects against a broken tested implementation. Source-lint retains both
 inert and process reports as Anamorph-POSIX-cleanup-validation. These tests
-establish measured Linux same-group behavior, not complete macOS LLDB cleanup.
+establish measured Linux same-group behavior, not complete macOS LLDB cleanup. The fixture's
+child publishes readiness only after its parent has finished writing its identity.
+`tests/rosetta_cleanup_handshake_tests.py` holds publication until the observer
+acknowledges the old readiness boundary or the fixed child's gate; both a paused
+observer and bounded missing-acknowledgement and observer-timeout paths are tested.
+`tests/rosetta_cleanup_fault_tests.py` exercises absent, malformed, unreadable and
+failed identity publication, leader exit before identity adoption, readiness and
+observer timeouts, and failures of signal, reaping and observation. It demonstrates
+the former identity-dependent finalizer's false-success condition before using the
+corrected finalizer. That finalizer proves a live/unreaped owned leader or adopted
+same-group child before signaling, reaps only its group, and reports unknown or
+failed cleanup as failure. These controls use isolated fixture sessions, bounded
+cleanup and a restored process-local subreaper, not process-name termination.
 
 Recorded native run 40285821331/job 121449104663 at de31f2c0 remains failed:
 direct focused completion, then a 120-second LLDB timeout. Its driver reported
@@ -7799,6 +7811,18 @@ combined source `f2686cb5`, preserving the N2-02 selector. The LR4 witness
 runner uses a committed minimal stub and is not a full JUCE or engine run.
 See the worklog inventory for the unverified historical H4 experiments and
 reproduction premises.
+
+### Replay provenance path and generated-input controls (2026-11-15)
+
+The synthetic replay guard suite additionally rejects diagnostic path/mode
+changes, altered or newly shadowing generated include files, changed packet
+inputs and missing required result artifacts. It inspects compiler dependency
+files and deliberately rejects unsupported forced-include/response-file forms.
+The `source-lint` job executes these lightweight Git/CMake controls; it does
+not build the product or replay historical H4 benchmarks. Controlled relinking
+requires a fresh receipt with the generated-input manifest. Actual Anamorph
+relink and isolated mutation controls are separate product evidence, and an
+exit-only run is not an oracle or proof of undeclared side artifacts.
 
 
 ## Retired review relinkers (2026-11-14)

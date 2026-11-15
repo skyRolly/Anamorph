@@ -45,7 +45,9 @@ def verify_source_tree(path, expected_sha, patch=None, patch_sha256=None):
     submodules and source symlinks are refused. Builds and outputs belong
     outside the checkout. This supports Git SHA-1 trees whose raw checkout bytes
     equal their blobs; it deliberately rejects transformed CRLF/filter outputs.
-    This is not a compiler or system-dependency attestation.
+    Diagnostic patches may change tracked file contents only: additions,
+    deletions, renames, mode changes and type changes are rejected. This is
+    not a compiler or system-dependency attestation.
     """
     path = Path(path).resolve()
     if not re.fullmatch(r'[0-9a-f]{40}', expected_sha):
@@ -79,10 +81,23 @@ def verify_source_tree(path, expected_sha, patch=None, patch_sha256=None):
         def indexed(*args, input_bytes=None):
             return subprocess.check_output(['git', '-C', str(path), *args], input=input_bytes, env=env).strip()
         indexed('read-tree', expected_sha)
+        original_entries = indexed('ls-files', '--stage', '-z').split(b'\0')
         if patch_bytes is not None:
             indexed('apply', '--cached', '--binary', '--unidiff-zero', '--whitespace=nowarn', '-', input_bytes=patch_bytes)
         intended = indexed('write-tree').decode()
         entries = indexed('ls-files', '--stage', '-z').split(b'\0')
+        def paths_and_modes(rows):
+            result = {}
+            for row in rows:
+                if row:
+                    header, name = row.split(b'\t', 1)
+                    mode, _, stage = header.split(b' ')
+                    if stage != b'0' or mode not in (b'100644', b'100755'):
+                        raise ValueError('unsupported unmerged, submodule or symlink source entry')
+                    result[name] = mode
+            return result
+        if paths_and_modes(original_entries) != paths_and_modes(entries):
+            raise ValueError('diagnostic patches may change tracked contents only; path or mode changes are unsupported')
         for entry in entries:
             if not entry:
                 continue
