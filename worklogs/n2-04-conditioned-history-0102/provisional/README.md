@@ -2,8 +2,8 @@
 
 This is nonshipping development against reviewed intended integration source
 `70bbdc22acdfd6286d13b1a15cb445367525c5e5`, not a result on actual final main.
-`candidate-source.patch` and `candidate-test.h` preserve the prototype bytes;
-the patch changes the existing self-heal's conditioned ring clear into a
+`candidate-source.patch.gz` and `candidate-test.h` preserve the prototype bytes;
+the losslessly compressed patch changes the existing self-heal's conditioned ring clear into a
 bounded, exceptional-path scan that zeros non-finite slots and retains finite
 bits. It keeps the aligned dry and OS compensation clears and all other reset
 ownership unchanged. The test header is a separately included new input, not
