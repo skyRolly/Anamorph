@@ -1,0 +1,28 @@
+{
+  "purpose": "Unpatched production comparison for actual post-Multiband Enable aligned-scratch nonfinite observations, finite extreme inputs and observed fade/wrap paths.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "e968d53284a38704a1f3982428a134c23252f3c3",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "post-enable-engine",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-engine-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "post-enable-engine",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "cases=",
+        "post_enable_nonfinite=",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}

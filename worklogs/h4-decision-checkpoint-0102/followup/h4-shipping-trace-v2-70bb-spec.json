@@ -1,0 +1,34 @@
+{
+  "purpose": "Unpatched-production engine-only diagnostic trace of finite Enable endpoints, aligned history publication and Mix self-heal; widening is a test-only comparison.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "14fdf64ff447bfcc9132666f01c6c88b1c939c50",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-shipping-trace-v2-70bb.patch",
+    "sha256": "27eb22d2b0fc44fcc3bb43740c09993bca86bcc48bc3c871ffe49a933817d746",
+    "purpose": "Add observation and a disabled-by-default exceptional-widening test switch to the original engine translation unit only."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "shipping-trace",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-shipping-trace-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "shipping-trace",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off widen=0",
+        "case=x4 widen=1",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
