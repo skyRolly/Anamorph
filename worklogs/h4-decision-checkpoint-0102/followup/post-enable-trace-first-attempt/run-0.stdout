@@ -1,0 +1,9 @@
+case=off widen=0 latency=0 overflow=40 writes=40 reads=40 bad_mix=40 scrubs=40 heals=4 repaired=0 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+case=off widen=1 latency=0 overflow=70 writes=0 reads=0 bad_mix=7 scrubs=7 heals=1 repaired=70 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+case=x4 widen=0 latency=6 overflow=40 writes=40 reads=40 bad_mix=40 scrubs=40 heals=4 repaired=0 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+case=x4 widen=1 latency=6 overflow=70 writes=0 reads=0 bad_mix=7 scrubs=7 heals=1 repaired=70 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+premise_failures=2
