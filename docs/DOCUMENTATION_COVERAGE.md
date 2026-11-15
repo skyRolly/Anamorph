@@ -19347,3 +19347,16 @@ the shared inventory and procedures identify which experiments have verified
 replacements and which remain open. Recorded a new full baseline and historical
 diagnostic replay, a fresh combined-source header-clamp control, and the separate
 committed-stub LR4 witness. Historical archived evidence remains unchanged.
+
+## POSIX cleanup fixture publication and finalization review (2026-11-14)
+
+The documentation drift check found that the new handshake control and changed
+fixture on PR #242 had testing instructions but no coverage-audit entry. TESTING
+and CI_CD now describe the explicit observer acknowledgement, the legacy and
+fixed controls, and the identity-unavailable finalizer fault controls. The
+independent finalizer targets only an owned isolated session, establishes group
+ownership before signaling, reaps adopted same-group children and treats failed
+or unknown cleanup as failure. The existing three production-cleanup cases and
+their budget remain intact. These Linux fixture checks do not establish the cause
+of the earlier hosted failure or native Rosetta cleanup behavior. Earlier audit
+entries and the original historical failure records are retained.
