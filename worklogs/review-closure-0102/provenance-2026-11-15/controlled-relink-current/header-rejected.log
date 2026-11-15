@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 150, in main
+    raise ValueError('controlled reuse requires exactly the reviewed engine TU change')
+ValueError: controlled reuse requires exactly the reviewed engine TU change

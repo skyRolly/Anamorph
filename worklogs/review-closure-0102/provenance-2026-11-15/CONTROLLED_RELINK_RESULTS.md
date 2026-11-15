@@ -15,3 +15,5 @@ The following controls each modified only the named build input, attempted an ac
 | Restored inputs and rechecked | Accepted |
 
 These controls test actual generated inputs and objects, not merely a synthetic CMake fixture. They assume the recorded fresh build was honestly produced, trusted compiler/system inputs, a stable filesystem, and no concurrent writers; they do not attest the host or historical executions. The input-boundary controls do not prove the numerical correctness of a declared experiment or the reviewer's intent in selecting a patch.
+
+The actual endpoint-header mutation was also rejected with exit 1: controlled reuse permits only the reviewed engine translation unit. Its partial output directory contained a compiled probe and patch but no linked executable or successful identity. The first attempt used an abbreviated specification commit and was rejected earlier; both attempt logs are retained. The header-changing mutation requires a fresh build.
