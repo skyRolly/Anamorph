@@ -1,7 +1,7 @@
 {
   "per_run_and_artifact_identities_match": true,
   "recorded_runs": 8,
-  "outer_runner_exit": "unavailable",
+  "outer_runner_exit": "host shell status unavailable; Docker die event reports container exit 0",
   "cases": [
     {
       "case": "callgrind-band1",

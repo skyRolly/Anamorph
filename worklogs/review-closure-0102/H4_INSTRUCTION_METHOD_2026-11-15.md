@@ -34,8 +34,9 @@ The first baseline attempt has eight recorded zero-exit runs and all required
 stdout/side-file hashes independently rechecked in
 `h4-instruction-baseline-results/companion-validation.json`. It proves the
 specified counts and observed paths were emitted by those recorded executions.
-Its captured outer runner/container exit is unavailable and its combined build
-log stops early; do not report that outer status as a pass. Any comparison that
-uses it must retain this limitation or repeat the baseline with a captured
-outer exit. Candidate or A2 specifications are not measurements until their
+Its captured host shell exit is unavailable and its combined build log stops
+early. The subsequently retrieved [Docker event](h4-instruction-baseline-results/docker-events.jsonl)
+records exit 0 for the same container, whose direct init child was the runner.
+This establishes its container exit; the missing complete outer log remains a
+limitation. Candidate or A2 specifications are not measurements until their
 executions and artifacts are retained.
