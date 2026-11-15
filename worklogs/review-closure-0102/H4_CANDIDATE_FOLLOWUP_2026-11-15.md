@@ -79,3 +79,21 @@ candidate as complete; these cost results inform that decision without accepting
 ADR-0074.
 
 The candidate-source full DSP suite also ran existing allocation Test 38 with all allocation-guard liveness checks active: 3,840 armed `setParameters`/`process` calls, 11 observed structural landings, and zero `new`/`malloc` in its measured partial-Mix/Match-enabled matrix. This is useful ordinary-path evidence, not an exceptional-recovery allocation or native real-time guarantee.
+
+## Post-validation arithmetic boundary
+
+In the experimental candidate, dry samples and recursive state are checked
+before the Multiband Enable interpolation; the aligned-history write follows
+that interpolation. A source-bound [direct production-kernel witness](h4-postguard-kernel-results/identity.json)
+uses injected finite operands `-FLT_MAX` and `FLT_MAX` with an interior blend
+`0.5` and observes a non-finite result. The kernel's historical interior
+arithmetic is intentionally unchanged by N2-03. Thus pre-interpolation
+finiteness alone cannot prove that every subsequently published history sample
+is finite for all possible operands. The witness does **not** establish that
+this operand pair naturally occurs in the engine, that a particular ring write
+retains it, or that it creates a distinct production defect; those are
+unverified. The candidate's full recovery contract needs either a justified
+input bound or an actual post-interpolation/history control. The first probe
+compile failed because its namespace collided with the POSIX `access` symbol;
+that failed attempt is retained separately, and the corrected probe and runner
+exited zero.
