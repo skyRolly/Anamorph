@@ -285,3 +285,5 @@ Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numeri
 0.10.2 DSP correction evidence: [ordinary crossfade ownership](worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md).
 
 0.10.2 Multiband endpoint evidence: [N2-03 correction and independent controls](worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
+N2-04 maintenance evidence: [conditioned dry history during self-heal](worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md).
