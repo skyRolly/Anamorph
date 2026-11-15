@@ -147,3 +147,25 @@ dependency review passed, and its head Microsoft analysis passed; the full head
 Build `43766678200` and head CodeQL `43766685820` remain running. Do not present
 these in-progress runs as successful. #239 remains open pending all required
 results and a fresh base/head check. Automatic branch deletion remains false.
+
+## Rehearsal and N2-04 preparation
+
+A disposable #240 integration rehearsal `ca5c6fc2285628d6cf03989d27ee50095d9740f1`
+merges the reviewed #240 head with staged #239 head `fe2affc1`; its five
+additive documentation conflicts retain both correction and H4 records. Its
+production source, tests, scripts and archived original audit match `70bbdc22`
+exactly. It adds the new H4 history policy and N2-09 references; ADR-0074 stays
+Proposed. Documentation and citation checks passed locally. It is a rehearsal,
+not actual main, a PR head, or final hosted validation.
+
+The separate N2-04 preparation branch `codex/0102-n2-04-prep` is based on that
+rehearsal and ends at `623d3c33`; its code and tests are in `1d14b86f`. It must
+be rebased onto actual final main before creating the separate maintenance PR.
+The [numerical reassessment](NUMERICAL_REASSESSMENT.md) records the distinct
+remaining findings, contract questions and next controls. #238 actual main
+`b4bf18f7` has now passed Build & Validate `43766535759`, CodeQL
+`43766535738` and Microsoft analysis `43766535834`. #239 head analyzer and PR
+merge-source checks passed; its exact-head Build & Validate `43766678200`
+remains in its valgrind step. No success is claimed before that run completes.
+A research-only cancellation request briefly returned HTTP 503 and succeeded
+on retry; no required PR or main check was cancelled.
