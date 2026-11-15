@@ -220,3 +220,7 @@ The [post-B2 integration record](../worklogs/engineering-review/post-b2-integrat
 The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/README.md) is supporting developer evidence: exact baseline SHA/pin, preserved reports, probes, controls and raw logs. It confers no architecture or merge approval.
 
 The [ordinary DSP correction record](../worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md) and its replay scripts/logs are supporting implementation evidence, separate from H4 owner approval.
+
+The [N2-03 endpoint worklog](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) is supporting
+implementation evidence for the existing ADR-0004/0005 contract; it supplies no
+new H4, topology, numerical-interior or merge approval.

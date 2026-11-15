@@ -19329,6 +19329,10 @@ The worklog archive retains all original reports, diagnostics, reproduction sour
 
 The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
 
+N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
+[the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
+exact stage endpoints independently of downstream Mix rounding.
+
 ## Numerical audit replay provenance follow-up (2026-11-14)
 
 The drift check found that the expanded synthetic replay tests and fresh-build
@@ -19356,6 +19360,10 @@ committed-stub LR4 witness. Historical archived evidence remains unchanged.
 ## N2-02 replay-entry audit — 2026-11-14 UTC
 
 The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+## N2-03 replay-entry and status audit — 2026-11-14 UTC
+
+The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
 
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 
