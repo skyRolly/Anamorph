@@ -7892,8 +7892,9 @@ response through actual x2/x4/x8 modulation wrapping and through the latency
 stand-in; the test observes the output guard, actual wrapper state and later
 delay reads. Separate injected ring poison and actual non-finite input controls
 require invalid slots to be scrubbed while finite opposite-channel history and
-signed zero survive. The live allocation guard is armed around exceptional
-processing when supported. The [record](../../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md)
+signed zero survive. A separate delayed second-spike control exercises repeated
+self-healing in both the latency stand-in and actual wrapped paths. The live
+allocation guard is armed around exceptional processing when supported. The [record](../../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md)
 separates the original-clear and unsafe-retention negative controls from
 provisional results, exact-source replay and hosted validation. It does not
 claim an H4 or N2-05 correction.

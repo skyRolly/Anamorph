@@ -19452,3 +19452,5 @@ separate evidence record. The original D-02 and numerical audit remain dated
 historical evidence. N2-05 through N2-09 and H4 remain distinct.
 
 The signal-flow meter anchor was re-derived after the exceptional-path insertion; stage order is unchanged.
+
+The N2-04 Test 59 extension now also exercises a delayed second finite spike and repeated self-heal; TESTING and the evidence record distinguish this v6 control from the prior v5 source-bound replay.
