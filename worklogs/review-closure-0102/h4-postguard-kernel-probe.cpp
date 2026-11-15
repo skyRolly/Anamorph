@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
-namespace access {
+namespace h4_postguard_access {
 struct Kernel { friend auto member(Kernel); };
 template<class Tag, auto P> struct Get { friend auto member(Tag) { return P; } };
 template struct Get<Kernel, &anamorph::AnamorphEngine::blendMultibandEnableSample>;
@@ -13,7 +13,7 @@ int main()
     volatile float left = -std::numeric_limits<float>::max();
     volatile float right = std::numeric_limits<float>::max();
     volatile float blend = 0.5f;
-    const float output = member(access::Kernel{})(left, right, blend);
+    const float output = member(h4_postguard_access::Kernel{})(left, right, blend);
     const bool a = std::isfinite(left), b = std::isfinite(right);
     const bool interior = blend > 0.0f && blend < 1.0f;
     const bool finite = std::isfinite(output);
