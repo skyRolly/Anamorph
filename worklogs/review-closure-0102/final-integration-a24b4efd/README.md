@@ -41,3 +41,5 @@ The status of the CodeQL job was accessible; the raw SARIF contents were not.
 The temporary signed download URL is intentionally not retained. This access
 limit is separate from the earlier inaccessible failure-specific Rosetta and
 cleanup artifacts.
+
+The separately fresh-built header-clamp diagnostic at this final source returned the expected **392 checks, 1 failure** while N2-02 remained **720/0**. Both inner and outer runners exited zero. The [receipt and raw streams](clamp/identity.json) preserve the exact tree, patch, build and executable identities.
