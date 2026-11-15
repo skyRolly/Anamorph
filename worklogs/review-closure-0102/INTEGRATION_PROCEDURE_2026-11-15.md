@@ -2,7 +2,7 @@
 
 The intended order is #237 → #238 → #239 → #240. #241 and #242 are already
 merged on main `1ade6e1ad128b067930ab216bc355605388eb1de`. #238, #239 and
-#240 are sibling PRs based on the actual #237 branch head `10ddde5e`; they
+#240 are sibling PRs based on the actual #237 branch head `e64e11fb`; they
 are not serial production branches. The H4 owner decision is independent of
 merging its documentation, and ADR-0074 remains Proposed.
 
@@ -54,7 +54,7 @@ against the actual main, verify that prerequisite files do not appear as new
 review scope, repeat conflict and semantic checks, and obtain review on the new
 identities. Do not assume an API's cached base SHA is the branch tip.
 
-The prepared validation identity is `0226e033179fe2ba83602d057b97082432762bc7`.
-Its [local integration record](final-integration-0226e033/README.md) describes
+The prepared validation identity is `a24b4efdfad4d267a63560079b0451c2c7487596`.
+Its [prior integration record](final-integration-0226e033/README.md) describes
 retained files and conflicts. Hosted checks are tied to that exact source;
 future retarget or merge commits require their own applicable validation.

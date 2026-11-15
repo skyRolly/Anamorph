@@ -1,5 +1,7 @@
 # Final integration checkpoint — 2026-11-15 UTC
 
+**Historical checkpoint:** superseded by integration `a24b4efdfad4d267a63560079b0451c2c7487596` after the State-summary parser correction. Its Build & Validate run was cancelled when the newer integration source was pushed.
+
 Disposable integration commit `0226e033179fe2ba83602d057b97082432762bc7`, tree
 `07c0701c6c3923d47e3f902dc9dc17bb32da8847`, includes main
 `1ade6e1ad128b067930ab216bc355605388eb1de` and final PR heads #237
