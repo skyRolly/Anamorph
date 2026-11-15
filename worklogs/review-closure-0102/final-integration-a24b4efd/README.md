@@ -49,3 +49,14 @@ The separately fresh-built header-clamp diagnostic at this final source returned
 After `70bbdc22` was pushed, this source's Build & Validate run `43708860006`
 was cancelled by workflow concurrency. Its Microsoft analysis had succeeded;
 its CodeQL result is recorded separately. These are prior-source observations.
+
+The corrected parser's fresh integrated replay on `a24b4efd` completed all
+**17 expected runs** with inner runner exit 0. Full DSP was **5,614/0** and
+full State **16,555/0**. N2-02-only restoration failed 316 engine and 12
+processor assertions while N2-03 remained 392/0; forced adoption failed eight.
+Both/wet-only/dry-only endpoint mutations failed 88/44/44 while N2-02 remained
+720/0. The [receipt and all raw streams](isolated/identity.json) are retained.
+The outer client disconnected and its shell exit and complete build log are
+unavailable; the in-container runner exit, individual exits, hashes and all
+17 expected summaries are retained. These are `a24b4efd` executions; `70bbdc22`
+has byte-identical source, tests and runner but a distinct Git identity.

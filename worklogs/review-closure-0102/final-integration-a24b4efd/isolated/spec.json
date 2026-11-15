@@ -1,0 +1,168 @@
+{
+  "purpose": "Final integration with corrected State-summary parser: full DSP and State suites and isolated production mutations.",
+  "source_head": "a24b4efdfad4d267a63560079b0451c2c7487596",
+  "source_tree": "687c1edbe015ddd1c69dcb33a461ce98296ef230",
+  "variants": [
+    {
+      "name": "n2-only",
+      "purpose": "Restore only ordinary bypass and multiband destination preservation in copyContinuous.",
+      "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "path": "worklogs/combined-isolated-controls-0102/n2-only.patch",
+      "sha256": "b293dabc2bbf21a1f73b3edf32010337ca7fe9a80fd1bb16a62d1a546060f33d",
+      "source_tree": "f11aa2341cd770f2bf60ba9447d2322d556a7120"
+    },
+    {
+      "name": "forced-only",
+      "purpose": "Prematurely adopt continuous controls while the forced destination is deferred.",
+      "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "path": "worklogs/combined-isolated-controls-0102/forced-only.patch",
+      "sha256": "e65d668434bc2a73e8134108e6adbe248a883949996ae84cbd6470375f994dba",
+      "source_tree": "5063b5ccf423555fbbdd6d66cabd70d76f5e1b93"
+    },
+    {
+      "name": "endpoint-both",
+      "purpose": "Restore only the original wet and dry Multiband Enable call-site expressions.",
+      "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-both.patch",
+      "sha256": "1fcb58b11a8341e85284237d762af11f1735719b7ef56078765b16330ea352a1",
+      "source_tree": "abc055666e2a87b7db1bcab65ed3c220b1e46afd"
+    },
+    {
+      "name": "endpoint-wet",
+      "purpose": "Restore only the original wet Multiband Enable call-site expressions.",
+      "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-wet.patch",
+      "sha256": "7a1405b16207627a156c8d242cdc865c34560024e045b2f4cb6ec2476aa6b46a",
+      "source_tree": "d87a3c3a5d79780100ecd9daadab7c02177fea53"
+    },
+    {
+      "name": "endpoint-dry",
+      "purpose": "Restore only the original dry Multiband Enable call-site expressions.",
+      "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+      "path": "worklogs/combined-isolated-controls-0102/endpoint-dry.patch",
+      "sha256": "c8fe534ee60d1506c08d9d5257c31e1d593c81acc0a3c2fbbb264f05ae64f4b5",
+      "source_tree": "12a04cb81035775bcee7c265f9cd9cf477bebaab"
+    }
+  ],
+  "runs": [
+    {
+      "variant": "base",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 0
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 316
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "n2-only",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 12
+    },
+    {
+      "variant": "forced-only",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 8
+    },
+    {
+      "variant": "forced-only",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 88
+    },
+    {
+      "variant": "endpoint-both",
+      "target": "AnamorphStateTests",
+      "selector": "--n2-controls",
+      "checks": 20,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-wet",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-wet",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 44
+    },
+    {
+      "variant": "endpoint-dry",
+      "target": "AnamorphTests",
+      "selector": "--n2-controls",
+      "checks": 720,
+      "failures": 0
+    },
+    {
+      "variant": "endpoint-dry",
+      "target": "AnamorphTests",
+      "selector": "--multiband-endpoints",
+      "checks": 392,
+      "failures": 44
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphTests",
+      "selector": "",
+      "checks": 5614,
+      "failures": 0
+    },
+    {
+      "variant": "base",
+      "target": "AnamorphStateTests",
+      "selector": "",
+      "checks": 16555,
+      "failures": 0
+    }
+  ]
+}
