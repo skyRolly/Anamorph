@@ -136,10 +136,10 @@ public:
         primeSnapshot (np, acquireAfterSnapshot (clear));
     }
 
-    // Adopts a new parameter snapshot. Continuous controls update immediately
-    // (they are all smoothed); a change to any DISCRETE control (algorithm,
-    // routing, bypass, ...) is deferred behind a short raised-cosine duck so the
-    // switch is click-free (feedback #10 / #11).
+    // Adopts a new parameter snapshot. Smoothed controls and independently
+    // crossfaded Bypass/Multiband Enable targets stay live during ordinary ducks.
+    // Genuine discrete controls (algorithm, routing, band count, ...) wait for
+    // the duck bottom; forced bulk destinations retain complete-state deferral.
     //
     // Nothing is adopted -- no live edit, no duck entry, no new target -- while a bulk swap's
     // completion is awaited, or from a snapshot that may have been read before it (ADR-0057): the
@@ -265,6 +265,17 @@ public:
 private:
     void updateDerived();
     void applyInputConditioning (float* L, float* R, int n) noexcept;
+
+    // ADR-0004: select exact Multiband Enable endpoints; keep the historical
+    // float expression for every interior value. Private production kernel,
+    // shared by the wet and phase-aligned dry contributions.
+    static float blendMultibandEnableSample (float from, float to, float blend) noexcept
+    {
+        if (std::abs (blend) <= 0.0f) return from;
+        if (std::abs (blend - 1.0f) <= 0.0f) return to;
+        return from + blend * (to - from);
+    }
+
     // `runMod` is false only for the base-rate call while an OS-path crossfade is in
     // flight: the mod algorithms (Chorus / Dimensional) belong to the wrapped path
     // whenever a factor is selected, and running the ONE chorus instance from both

@@ -833,7 +833,7 @@ with broken metadata are refused. Archive tests reach a deliberate product-targe
 marker after the provenance check. No JUCE download or plugin compilation occurs.
 The `linux` and `merge-check` CI jobs run them before their normal configuration.
 
-`tests/dsp_tests.cpp` has **76 DSP tests** (Test 1 to Test 76; Tests 3 and 4 run as one) and the A/B
+`tests/dsp_tests.cpp` has **77 DSP tests** (Test 1 to Test 77; Tests 3 and 4 run as one) and the A/B
 active-slot clamp guard, using a `check(cond, "what")` harness, covering: MS
 round-trip (bit-exact), transparent default, true-bypass null + latency match, Mono Maker
 (post-Mix), Multiband mono-compat, Solo band selectivity + transparency, Level Match
@@ -7790,6 +7790,32 @@ reset does not prevent the observed block; the earlier Haas reset was inactive.
 The arithmetic control is scoped to the recorded first sample and does not
 validate a production correction or the complete subsequent tail.
 
+DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
+
+## Multiband Enable stage endpoints (N2-03, Test 23 extension)
+
+`AnamorphTests --multiband-endpoints` selects 392 checks also run by the complete
+suite. The private production kernel is exercised with independently specified
+endpoint bits, including signed zero, and unchanged interior arithmetic. Engine
+legs copy only the production filter state before processing, then independently
+compute unblended wet/A(dry) destinations from the actual pre-Multiband input.
+The kernel is checked directly; the actual aligned-dry and Level-Match reference
+buffers are checked separately. Both Match-off and Match-on compare the actual
+engine output against independently reconstructed wet/dry boundaries followed by
+Mix rounding. For Match-on, a copy of the pre-block gain smoother uses the actual
+post-measure target; its final state is checked against the engine. This does not
+independently validate the measurement algorithm. A counterfactual confirms that
+some legacy wet errors survive downstream rounding and some are legitimately
+masked, so the final output is not a direct bitwise stage observation for every
+sample. A wet-only call-site mutation must fail output checks even when every
+aligned-dry check passes; a dry-only mutation must fail the dry/reference checks. The numbered inventory remains 76 (an extension to
+existing transition coverage, as with the R-01 Test 76 extension).
+
+44.1/48/96 kHz, blocks 64/127/256, 2/3/4 bands, Mix 1/.4 and Match off/on cover
+both terminal endpoints, subsequent samples within the terminal block, repeated
+and reversed transitions and non-neutral unequal stereo. Source identity,
+negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
 ## Numerical audit replay provenance controls (2026-11-14)
 
 `python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
@@ -7818,6 +7844,10 @@ The synthetic replay guard suite additionally rejects diagnostic path/mode
 changes, altered or newly shadowing generated include files, changed packet
 inputs and missing required result artifacts. It inspects compiler dependency
 files and deliberately rejects unsupported forced-include/response-file forms.
+The combined-control parser also accepts the actual `failure(s)` full-State
+summary and DSP/selector `failure` and `failures`; malformed summaries fail.
+A real integrated run exposed the old omission after State itself passed; its
+failed runner result and raw stream are preserved in the independent record.
 The `source-lint` job executes these lightweight Git/CMake controls; it does
 not build the product or replay historical H4 benchmarks. Controlled relinking
 requires a fresh receipt with the generated-input manifest. Actual Anamorph
@@ -7826,6 +7856,10 @@ exit-only run is not an oracle or proof of undeclared side artifacts.
 
 
 ## Retired review relinkers (2026-11-14)
+
+The old N2-02 relinker is intentionally disabled before any output is created; normal and `python -O` invocations are checked in `worklogs/n2-controls-0102/retired-relinker-controls.json`. Current isolated N2-02 and forced-adoption mutations use the reviewed shared fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
+
+The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
 
 The three old H4 probe/recovery/endpoint relink entry points are intentionally disabled before output creation; normal and `python -O` rejection controls are recorded in `worklogs/h4-review-followup-0102/retired-relinker-controls.json`. Committed specifications and shared fresh-build or receipt-checked runners cover the stated follow-up witnesses; other historical experiments remain separately scoped and are not automatically reproducible.
 
@@ -7842,3 +7876,10 @@ make the failing-on-main low-frequency oracle mandatory.
 The [candidate checkpoint](../../worklogs/h4-decision-checkpoint-0102/README.md) records 40 scoped checks, actual fade-bank and wrapped-latency premises, and the still-unverified first-consumption/history contract. This is diagnostic evidence, not a new mandatory test, production correction, complete recovery claim, or performance result. Test 25 remains unchanged.
 
 A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) records the expanded oracle, recovery controls and matched instruction artifacts; it does not establish complete exceptional recovery or native real-time performance.
+
+
+
+
+## H4 first-consumption and N2-09 follow-up (2026-11-15)
+
+The [nonshipping history trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observes actual aligned history writes and latency-offset Mix reads after injected invalid dry state. The [independent production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) establishes N2-09: an extreme finite input causes an interior Enable overflow, aligned-history write/read and self-heal. The 216-case [unpatched secondary search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) did not find the separate dry-source interpolation failure exposed by a diagnostic fallback; this is a bounded negative result. These do not establish a complete H4 policy or change Test 25.

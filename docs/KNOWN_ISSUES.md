@@ -10,8 +10,8 @@ N2-01 (P2) and V2-01 remain open on the investigated main: H4 skips recursive dr
 crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
-The original audit's N2-04–07 remain confirmed P3 findings, outside this round's
-implementation scope; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
+The original audit's N2-04–07 remain confirmed P3 findings on the reviewed
+production source and are tracked independently for maintenance; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
 are retained. Open correction PRs do not establish integration on main.
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
@@ -22,6 +22,13 @@ the affected block. A diagnostic widening of that one copied-state step yields
 finite, representable results for its first sample. This is a separate wet-path
 numerical defect, not the H4 dry-state transient; no production correction is
 included. [Reproduction and limits](../worklogs/h4-review-followup-0102/README.md).
+
+N2-09 (P3 review assessment): on reviewed integration `70bbdc22`, an extreme
+finite input during a Multiband Disable fade at partial Mix can overflow the
+historical interior aligned-dry Enable interpolation between finite operands.
+The invalid sample entered aligned history and reached the existing self-heal.
+This predates N2-03's endpoint fix and is distinct from N2-08's wet LR4
+overflow. [Trace and scope](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md).
 
 **Only currently-existing, confirmed problems/limitations.** Resolved or historical issues belong
 in `POSTMORTEMS.md`, not here. Each entry is evidence-backed (constraint C7). When an item is

@@ -1,0 +1,34 @@
+{
+  "fixed.log": {
+    "sha256": "cd77d25d9720374f83dfd70ad640d5fa3f68c9e14f69950932e17c0d3e4be791",
+    "bytes": 6307
+  },
+  "original.log": {
+    "sha256": "aac3ac3b61d8e61fe34cc19a48075667147f540f5489b82e11c356530f4fdfb9",
+    "bytes": 12662
+  },
+  "wet-only.log": {
+    "sha256": "25200ed378d1fb7b57b915b16a88269737df6d0576832483eec16470829907ff",
+    "bytes": 8966
+  },
+  "dry-only.log": {
+    "sha256": "2fd04248c7e847a069fd62e12d9d370e309ce52dae2e0fb316033973a875d050",
+    "bytes": 10014
+  },
+  "src/dsp/AnamorphEngine.cpp": {
+    "sha256": "f209a69084628887bc58ac01b0256d6e36b79759079136a81ec337bf19f45549"
+  },
+  "src/dsp/AnamorphEngine.h": {
+    "sha256": "255e0e69270fc0a3196f45b44ab340aadca8902f88ef4c6f9ccc5b3e2ce7eece"
+  },
+  "tests/dsp_tests.cpp": {
+    "sha256": "aacb0596ee39e41d49b62b55afec059e660be472eb2e77bb354b03955d1c55d8"
+  },
+  "tests/n2_endpoint_tests.h": {
+    "sha256": "4488f63d463c3729aef2503979cc9302cac1356a71f22d2e0b5c02f1a6293a13"
+  },
+  "full-dsp.log": {
+    "sha256": "c5f3e22918c1ef1b439605ffe7565a51959bc61c598bde023021f820e360a729",
+    "bytes": 157324
+  }
+}

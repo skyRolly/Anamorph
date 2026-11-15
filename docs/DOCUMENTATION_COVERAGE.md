@@ -19341,6 +19341,14 @@ self-heal. The later copied-state control identifies a distinct extreme-finite w
 LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
 issues and TESTING. Existing H4 findings and historical measurements remain.
 
+## N2-02 ordinary-duck crossfade targets
+
+The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
+
+N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
+[the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
+exact stage endpoints independently of downstream Mix rounding.
+
 ## Numerical audit replay provenance follow-up (2026-11-14)
 
 The drift check found that the expanded synthetic replay tests and fresh-build
@@ -19379,6 +19387,14 @@ follow-up worklog and TESTING also link the fresh source-bound repeated
 channel-recovery and reset-both control. They state its limited scope and the
 negative runner's unobserved outer status; original evidence remains unchanged.
 
+## N2-02 replay-entry audit — 2026-11-14 UTC
+
+The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+## N2-03 replay-entry and status audit — 2026-11-14 UTC
+
+The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 
 The documentation drift check found that the new handshake control and changed
@@ -19396,7 +19412,10 @@ entries and the original historical failure records are retained.
 
 Drift review confirmed that the previous replay description did not rule out
 retained paths deleted by a diagnostic patch or newly shadowing generated
-headers during controlled relinking. The maintained helper now restricts patch
+headers during controlled relinking. A full-State replay also exposed a parser
+omission for `failure(s)` after the State suite itself passed; TESTING and the
+lightweight positive/negative controls now describe and check both formats.
+The failed runner result remains historical. The maintained helper restricts patch
 path/mode changes, records generated include trees and compiler dependencies,
 and checks copied probe inputs. TESTING and CI_CD describe the synthetic
 source-lint gate and the separate need for actual product replay controls.
@@ -19410,3 +19429,14 @@ Before editing, the current H4 packet, ADR-0074, README and TESTING were checked
 ## Link later H4 evidence from dated checkpoint (2026-11-15)
 
 The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewed before this update. The initial unmeasured-cost statement is now explicitly dated, and the later separate nonshipping recovery and instruction evidence is linked without treating it as an accepted architecture decision. Historical measurements and production source are unchanged.
+
+## H4 history and N2-09 staged integration audit — 2026-11-15
+
+The drift check found the stable checkpoint predating the first-consumption
+trace, matched candidate cost and the separate N2-09 production witness. The
+Proposed ADR, checkpoint, known issues, TESTING and indexes now link those
+separately committed, source-scoped results. The bounded secondary search is
+not a proof of unreachability. Original evidence and Test 25 remain intact.
+
+The H4 decision packet now points to the later policy checkpoint, and the dated
+November 13 delivery ledger explicitly labels its PR-state table historical.

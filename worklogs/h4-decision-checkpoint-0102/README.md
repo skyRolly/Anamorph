@@ -114,3 +114,7 @@ Admissible owner outcomes are a supported candidate after its missing evidence,
 a separately reviewed contract/architecture alternative, targeted follow-up,
 retention of the documented limitation, or deferral. None of this accepts
 ADR-0074 or authorizes a production H4 change.
+
+## Subsequent first-consumption and policy checkpoint
+
+The dated cost statements above describe the earlier checkpoint. The independently committed [follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) records matched consumption-aware instruction measurements, actual history read/write observations, N2-09's separately established extreme-finite Enable overflow, a bounded secondary search and the still-unapproved exceptional-output policy. The candidate remains nonshipping and its complete recovery contract is not established.

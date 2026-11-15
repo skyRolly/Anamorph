@@ -105,7 +105,7 @@ identities and original/P1 human attestations with their scope. The earlier
   build report Anamorph as missing** — re-insert the plug-in and re-load the preset. Audio,
   parameters and presets are unchanged. ADR-0023 · [`KI-016`](docs/KNOWN_ISSUES.md).
 - Active development on a feature-branch → PR → `main` workflow.
-- Validation gate: **76 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
+- Validation gate: **77 DSP self-tests** + the **142-test state-compatibility suite** + **pluginval strictness 10** (both modes ×3, blocking on all three CI platforms).
 - A green build + pluginval pass is **"ready to audition,"** not final sign-off (audio/visual
   quality needs a DAW — see `docs/procedures/TESTING.md`).
 
@@ -280,4 +280,8 @@ Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numeri
 
 0.10.2 H4 evidence: [dry-state decision package and verification boundary](worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md), Proposed ADR-0074; production H4 remains unchanged.
 
-0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). The N2 correction and H4 documentation PRs remain open for owner review; the independent cleanup fixture PR #242 has been merged.
+0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). The individual PR records track their staged integration; the independent cleanup fixture PR #242 was merged earlier.
+
+0.10.2 DSP correction evidence: [ordinary crossfade ownership](worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md).
+
+0.10.2 Multiband endpoint evidence: [N2-03 correction and independent controls](worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
