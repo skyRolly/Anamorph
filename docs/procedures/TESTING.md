@@ -7789,3 +7789,15 @@ combined source `f2686cb5`, preserving the N2-02 selector. The LR4 witness
 runner uses a committed minimal stub and is not a full JUCE or engine run.
 See the worklog inventory for the unverified historical H4 experiments and
 reproduction premises.
+
+### Replay provenance path and generated-input controls (2026-11-15)
+
+The synthetic replay guard suite additionally rejects diagnostic path/mode
+changes, altered or newly shadowing generated include files, changed packet
+inputs and missing required result artifacts. It inspects compiler dependency
+files and deliberately rejects unsupported forced-include/response-file forms.
+The `source-lint` job executes these lightweight Git/CMake controls; it does
+not build the product or replay historical H4 benchmarks. Controlled relinking
+requires a fresh receipt with the generated-input manifest. Actual Anamorph
+relink and isolated mutation controls are separate product evidence, and an
+exit-only run is not an oracle or proof of undeclared side artifacts.
