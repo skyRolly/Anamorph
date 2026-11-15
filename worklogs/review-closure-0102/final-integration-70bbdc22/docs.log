@@ -1,0 +1,5 @@
+/workspace/anamorph-final-integration/scripts/check-docs.py:18: SyntaxWarning: invalid escape sequence '\s'
+  delimiter (the sibling's `\s{0,3}` matches a tab; four columns, so CommonMark calls it
+/workspace/anamorph-final-integration/scripts/check-docs.py:2106: SyntaxWarning: invalid escape sequence '\['
+  f"`release.yml` cannot extract it (`^## \[`) and it does not terminate the "
+check-docs: 210 file(s) clean.
