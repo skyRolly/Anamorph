@@ -1,0 +1,11 @@
+case=off widen=0 latency=0 overflow=40 pre_nonfinite=0 clean_nonfinite=0 writes=40 reads=40 bad_mix=40 secondary_dry_overflow=0 scrubs=40 heals=4 repaired=0 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+case=off widen=1 latency=0 overflow=70 pre_nonfinite=0 clean_nonfinite=0 writes=0 reads=0 bad_mix=7 secondary_dry_overflow=7 scrubs=7 heals=1 repaired=70 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+secondary clean=-0x1.f5c28ep+126 aligned=0x1.08ba8p+127 mixed_dry=inf wet=0x1.f07034p-13 mix=0x1.99999ap-2 output=-nan
+case=x4 widen=0 latency=6 overflow=40 pre_nonfinite=0 clean_nonfinite=0 writes=40 reads=40 bad_mix=40 secondary_dry_overflow=0 scrubs=40 heals=4 repaired=0 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+case=x4 widen=1 latency=6 overflow=70 pre_nonfinite=0 clean_nonfinite=0 writes=0 reads=0 bad_mix=7 secondary_dry_overflow=7 scrubs=7 heals=1 repaired=70 finite_expr_mismatch=0
+witness clean=-0x1.f5c28ep+126 aligned_before=0x1.1b386p+127 blend=0x1.c2aabap-1 old_result=inf
+secondary clean=-0x1.f5c28ep+126 aligned=0x1.08ba8p+127 mixed_dry=inf wet=0x1.aa262p-12 mix=0x1.99999ap-2 output=-nan
+premise_failures=0
