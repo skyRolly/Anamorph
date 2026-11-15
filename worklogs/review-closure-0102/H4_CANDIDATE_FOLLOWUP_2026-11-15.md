@@ -77,3 +77,5 @@ deadline results, allocation measurements or plugin-capacity estimates. The
 unresolved exceptional-output/history contract still prevents selecting the
 candidate as complete; these cost results inform that decision without accepting
 ADR-0074.
+
+The candidate-source full DSP suite also ran existing allocation Test 38 with all allocation-guard liveness checks active: 3,840 armed `setParameters`/`process` calls, 11 observed structural landings, and zero `new`/`malloc` in its measured partial-Mix/Match-enabled matrix. This is useful ordinary-path evidence, not an exceptional-recovery allocation or native real-time guarantee.
