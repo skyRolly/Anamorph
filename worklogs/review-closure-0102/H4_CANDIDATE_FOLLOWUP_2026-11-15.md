@@ -18,3 +18,47 @@ that one live fade bank and the source retiring during the block were missed.
 The unmutated candidate passed those same checks. This demonstrates sensitivity
 to the named detector boundary; it does not establish natural occurrence of the
 injected invalid states or the complete recovery contract.
+
+## Expanded fresh candidate execution
+
+A second fresh build of the same candidate tree executed the expanded probe,
+the independent H4 matrix, and the candidate source's full DSP suite. Its
+[receipt](h4-consumption-v2-results/identity.json) records source, patch,
+JUCE, build, binaries, run commands, streams and the original uncompressed
+sample-CSV digest. The raw CSV is retained losslessly as
+`h4-samples.csv.gz`; it is a new result, not a rewritten historical artifact.
+The separate committed `df89edb67eb0ea36508d85f4842b67ea99c5c10a` validator
+`worklogs/h4-dry-state-0102/verify_oracle.py` was run over the recorded matrix
+stream and wrote `oracle.json`; its script, input and output hashes are in
+`oracle-inputs.sha256` and its exit was zero.
+
+- The 20 Hz and 50 Hz oracle's eight actual-gate, wet-bank, re-entry,
+  first-window and tail assertions passed. Peak and tail error were zero for
+  these cases against its warm production-module/full-wet-twin reference.
+- The source's full DSP suite passed 4,794 checks. This diagnostic source is
+  historical base `003c9a1a` plus the candidate patch, not the final combined
+  integration source.
+- The expanded targeted probe passed **48 checks**. It checked both-channel
+  wet recursive-state equality, opposite output, raw and conditioned histories,
+  opposite aligned history, preservation of previously unwritten affected
+  history, finite newly written aligned history, and two subsequent injected
+  recoveries in the zero-latency and actual x4 wrapped/six-sample cases.
+- In the first injected-invalid-state consuming block, finite affected output
+  differed from the clean reference for **128/128 samples** at zero latency
+  (maximum absolute difference about `0.00921214`) and **122/128** with the
+  actual x4 wrapped path (maximum about `0.00838126`); all 128 newly written
+  affected-channel aligned-history slots differed in each case. These are
+  diagnostic differences under deliberately injected invalid state, not an
+  audibility or natural-reachability claim. They establish that finite output
+  and finite written history are insufficient to claim clean-reference
+  reconstruction after the fault. The acceptable exceptional output and how
+  previously written or newly sanitized history is recovered remain a contract
+  and design question. The independently checked opposite output and valid
+  unrelated histories remained equal in these cases.
+
+The candidate remains incomplete: ordinary reconstruction and a subset of
+channel-local recovery are evidenced, but a policy and independent oracle for
+finite affected-channel data after invalid state, including natural exceptional
+arithmetic, fading, glides, Match and repeated latency interactions, are not
+established. Measurements of this exact modified candidate must not borrow the
+historical A2 instruction ratios.
