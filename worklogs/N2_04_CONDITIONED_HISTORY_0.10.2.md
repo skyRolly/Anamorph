@@ -38,3 +38,12 @@ The standalone selector `--n204-conditioned-history` is also registered in
 the full DSP suite. Final-main rebasing, exact-source replay, applicable hosted
 validation and owner review remain separate from these provisional results.
 No claim of native DAW, listening, hardware or release acceptance is made.
+
+The preliminary documentation check first reported that this separate clone
+had no `origin/main`, which prevented its release-link ancestry check; fetching
+that ref made the check applicable. The citation check then identified the
+expected line shifts from the self-heal insertion, including the metering tap.
+The anchors were re-derived and the historical sign-off range retained in its
+audit note. The documentation and citation checks passed against rehearsal
+base `ca5c6fc2`. These were documentation/environment findings, not DSP test
+failures; final-base checks remain required.
