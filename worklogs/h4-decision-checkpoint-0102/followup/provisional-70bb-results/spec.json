@@ -1,0 +1,66 @@
+{
+  "purpose": "Provisional nonshipping H4 consumption-aware candidate on intended integration 70bb: rerun focused recovery, low-frequency matrix, and full DSP before rebinding to actual integrated main.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "bd96b406db5de5b85d3c72d9db55165a36860bb9",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-candidate-integration-70bb.patch",
+    "sha256": "332c230af9dd82298c79f77db1087d37dc7112ad48ce9c91d15aac72d0927284",
+    "purpose": "Same nonshipping consumption-aware dry maintenance and channel-local guard, rebased onto the reviewed N2-02 and N2-03 integration tree."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "consumption-probe-v2",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-consumption-probe-v2.cpp"
+    },
+    {
+      "name": "h4-oracle",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/h4_probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "consumption-probe-v2",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "bands=1 relevant_states=0",
+        "bands=4 relevant_states=16",
+        "affected_output_differences=",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "h4-oracle",
+      "args": [
+        "h4-samples.csv"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "tone20,",
+        "tone50,",
+        "wet_changed_blocks"
+      ],
+      "required_artifacts": [
+        {
+          "path": "h4-samples.csv"
+        }
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "checks, 0 failures"
+      ]
+    }
+  ]
+}
