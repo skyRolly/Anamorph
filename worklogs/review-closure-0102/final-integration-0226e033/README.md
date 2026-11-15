@@ -64,3 +64,5 @@ product-test failure. Its [identity, exact raw streams and container exit](isola
 are retained; the previously disconnected client left the captured build log
 incomplete. Correct the parser and rerun the affected control before treating
 this result as a successful outer replay.
+
+A separately fresh-built header clamp at this historical `0226e033` source returned the expected **392 checks, 1 failure**, while N2-02 remained **720/0**; the runner exited zero. Its [receipt and raw output](clamp-attempt/identity.json) are retained. The corresponding final-source `a24b4efd` replay is separate.
