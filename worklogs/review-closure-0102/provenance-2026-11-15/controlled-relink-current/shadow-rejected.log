@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 99, in main
+    commands = verify_build()
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 86, in verify_build
+    verify_generated_inputs(recorded.get('generated_include_manifest'),
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            relevant_compile_commands(commands, target), build, checkout, juce)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/compiler_inputs.py", line 81, in verify_generated_inputs
+    raise ValueError('generated compiler-input directory changed')
+ValueError: generated compiler-input directory changed

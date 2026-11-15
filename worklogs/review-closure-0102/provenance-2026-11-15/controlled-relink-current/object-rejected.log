@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 99, in main
+    commands = verify_build()
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 91, in verify_build
+    raise ValueError('recorded fresh-build object changed or unavailable: '+filename)
+ValueError: recorded fresh-build object changed or unavailable: /workspace/prov-review-fresh-product/fresh-build/CMakeFiles/AnamorphTests.dir/src/dsp/AnamorphEngine.cpp.o

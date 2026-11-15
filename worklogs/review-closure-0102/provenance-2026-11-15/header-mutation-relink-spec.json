@@ -1,0 +1,32 @@
+{
+  "purpose": "Negative control: a header mutation requires a fresh build and must not be accepted by engine-only controlled relink.",
+  "source_head": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+  "source_tree": "308afe041ad9e6ebdad0fa3dd2de13c620278a33",
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/endpoint-clamp.patch",
+    "sha256": "2755f6d94357a4ee1c822f1f542f5aa2f72064c44768b6b38c99c4caddd61893",
+    "purpose": "Change only the private endpoint kernel comparisons."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "runs": [
+    {
+      "program": "h4-reentry-injection",
+      "args": [
+        "off",
+        "inject"
+      ],
+      "expected_exit": 0
+    }
+  ],
+  "probes": [
+    {
+      "name": "h4-reentry-injection",
+      "target": "AnamorphTests",
+      "commit": "7db4744bf0b7c314bfeeda0435f0177f284b9ff6",
+      "path": "worklogs/review-closure-0102/h4-reentry-injection-probe.cpp"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "case": "shadow",
+    "exit": 1,
+    "output_created": false,
+    "stderr_tail": "ValueError: generated compiler-input directory changed"
+  },
+  {
+    "case": "generated",
+    "exit": 1,
+    "output_created": false,
+    "stderr_tail": "ValueError: generated compiler-input directory changed"
+  },
+  {
+    "case": "object",
+    "exit": 1,
+    "output_created": false,
+    "stderr_tail": "ValueError: recorded fresh-build object changed or unavailable: /workspace/prov-review-fresh-product/fresh-build/CMakeFiles/AnamorphTests.dir/src/dsp/AnamorphEngine.cpp.o"
+  },
+  {
+    "case": "cpath",
+    "exit": 1,
+    "output_created": false,
+    "stderr_tail": "ValueError: compiler/build environment differs from recorded fresh build"
+  },
+  {
+    "case": "restored-positive-check",
+    "exit": 0
+  }
+]
