@@ -1,0 +1,44 @@
+{
+  "purpose": "Fresh source-bound N2-04 preparation build: actual focused conditioned-history regression, full DSP and State suites. This is a rehearsal source, not final main.",
+  "source_head": "623d3c33b6e381a34d09dd00fff5a59a6b3838ab",
+  "source_tree": "8460a3d0b16d26e2810fd2b71b81580eefb00734",
+  "targets": [
+    "AnamorphTests",
+    "AnamorphStateTests"
+  ],
+  "probes": [],
+  "runs": [
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--n204-conditioned-history"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "actual wrapped algorithm",
+        "109 checks, 0 failures"
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "5723 checks, 0 failures",
+        "ALL TESTS PASSED"
+      ]
+    },
+    {
+      "program": "AnamorphStateTests",
+      "prefix": [
+        "xvfb-run",
+        "-a"
+      ],
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "16555 checks, 0 failure(s)"
+      ]
+    }
+  ]
+}
