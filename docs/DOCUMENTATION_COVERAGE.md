@@ -19445,3 +19445,5 @@ The additional nonshipping 216-case search and its bounded negative result are l
 
 The nonshipping conditioned-dry fallback specification is indexed in the H4
 follow-up and TESTING before execution; no recovery guarantee is claimed.
+
+The subsequently executed conditioned-dry fallback and its scoped controls are linked from the Proposed ADR, H4 packet, policy record and TESTING. The prior unexecuted-specification note remains a dated execution checkpoint; no production acceptance is implied.

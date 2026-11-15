@@ -487,3 +487,6 @@ A fresh nonshipping consumption-aware scan, its exact identities, 40 focused pas
 ## Subsequent nonshipping checkpoint — 2026-11-15
 
 The [follow-up record](h4-decision-checkpoint-0102/followup/README.md) adds an eight-assertion low-frequency oracle, 48 focused checks, an actual fade-bank negative control and unrelated-state preservation checks, affected-output/reference differences under injected invalid state, and [matched candidate instruction counts](h4-decision-checkpoint-0102/followup/H4_INSTRUCTION_METHOD_2026-11-15.md). Its scope and native-hardware limits are explicit. The exceptional recovery/history contract is still unestablished; ADR-0074 remains Proposed.
+
+
+The subsequent nonshipping [conditioned-dry fallback experiment](h4-decision-checkpoint-0102/followup/conditioned-fallback-70bb-results/README.md) passed its scoped first-consumption oracle and negative controls but still produced affected history different from a clean twin. It does not establish a complete recovery policy or representative native cost; ADR-0074 remains Proposed.

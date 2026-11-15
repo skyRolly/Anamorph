@@ -1,0 +1,5 @@
+FAIL negative claim that finite history equals clean reference
+case=off latency=0 changed_history=32 changed_output=32 first_difference=0 fallback=1
+FAIL negative claim that finite history equals clean reference
+case=x4 latency=6 changed_history=32 changed_output=26 first_difference=6 fallback=1
+32 checks, 2 failures

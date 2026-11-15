@@ -163,3 +163,9 @@ context lines were represented as equivalent delete/add pairs; an independent
 temporary-index application confirmed the identical diagnostic tree. Both
 specification revisions remain in Git history; the later digest is the one to
 execute.
+
+The [executed conditioned-dry fallback](conditioned-fallback-70bb-results/README.md)
+passed its 30-check injected first-consumption policy oracle; switch-off,
+false-clean-history and invalid-history controls were sensitive. Its affected
+history still differed from the clean twin, and neither the complete recovery
+contract nor native cost is established.

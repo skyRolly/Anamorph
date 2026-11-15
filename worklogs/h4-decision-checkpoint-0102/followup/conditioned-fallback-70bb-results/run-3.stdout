@@ -1,0 +1,13 @@
+FAIL new aligned history and output remain finite
+FAIL independent wet twin and actual history reconstruct Mix output
+injected_invalid_history_detected=1
+case=off latency=0 changed_history=32 changed_output=32 first_difference=0 fallback=1
+FAIL actual aligned samples published at write index
+FAIL actual delay read position follows reported latency
+FAIL new aligned history and output remain finite
+FAIL opposite channel output and aligned history preserved
+FAIL conditioned history preserved
+FAIL independent wet twin and actual history reconstruct Mix output
+injected_invalid_history_detected=1
+case=x4 latency=6 changed_history=32 changed_output=26 first_difference=6 fallback=1
+30 checks, 8 failures
