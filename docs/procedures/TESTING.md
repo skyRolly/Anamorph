@@ -7840,3 +7840,5 @@ make the failing-on-main low-frequency oracle mandatory.
 ## Nonshipping H4 consumption-aware checkpoint (2026-11-15)
 
 The [candidate checkpoint](../../worklogs/h4-decision-checkpoint-0102/README.md) records 40 scoped checks, actual fade-bank and wrapped-latency premises, and the still-unverified first-consumption/history contract. This is diagnostic evidence, not a new mandatory test, production correction, complete recovery claim, or performance result. Test 25 remains unchanged.
+
+A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) records the expanded oracle, recovery controls and matched instruction artifacts; it does not establish complete exceptional recovery or native real-time performance.

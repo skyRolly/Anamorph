@@ -480,4 +480,6 @@ Proposed and production H4 is unchanged.
 
 ## Current candidate checkpoint — 2026-11-15
 
+The [separate later H4 follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) records additional scoped recovery controls and matched instruction measurements; it does not authorize an H4 implementation or accept ADR-0074.
+
 A fresh nonshipping consumption-aware scan, its exact identities, 40 focused passing checks, state-lifetime contract, unresolved first-consumption/history boundary and bounded next experiment are recorded in the [current checkpoint](h4-decision-checkpoint-0102/README.md). The historical A2 instruction counts above are not measurements of this candidate. No candidate has established the complete recovery contract, no H4 production change is authorized, and ADR-0074 remains Proposed.
