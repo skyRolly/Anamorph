@@ -19447,3 +19447,5 @@ The nonshipping conditioned-dry fallback specification is indexed in the H4
 follow-up and TESTING before execution; no recovery guarantee is claimed.
 
 The subsequently executed conditioned-dry fallback and its scoped controls are linked from the Proposed ADR, H4 packet, policy record and TESTING. The prior unexecuted-specification note remains a dated execution checkpoint; no production acceptance is implied.
+
+The fallback record and Proposed ADR also state that its affected-channel reset covers both dry banks; live-fade preservation is not established by the one-sample oracle.

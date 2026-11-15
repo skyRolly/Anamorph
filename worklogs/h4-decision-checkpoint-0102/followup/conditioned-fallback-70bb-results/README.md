@@ -16,8 +16,10 @@ When the existing consumption-aware diagnostic detects invalid dry output or
 consumed recursive state, this variant substitutes finite conditioned dry
 (and zero for a non-finite conditioned sample) for the affected channel's
 entire fault block before the aligned-history write, then resets that channel's
-dry state. A separate switch preserves the prior sanitization-only candidate
-as a negative control. This block policy may alter partial-Mix phase and does
+dry state in **both** crossover banks. This can also reset an otherwise valid
+bank in the affected channel; the current one-sample experiment does not test
+a live bank fade or establish that such a reset is acceptable. A separate
+switch preserves the prior sanitization-only candidate as a negative control. This block policy may alter partial-Mix phase and does
 not reconstruct the missing allpass trajectory. It does not address every
 post-Enable overflow or establish N2-09's correction.
 

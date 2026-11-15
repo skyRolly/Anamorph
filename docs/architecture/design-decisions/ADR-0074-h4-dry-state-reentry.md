@@ -137,3 +137,8 @@ The [policy comparison](../../../worklogs/h4-decision-checkpoint-0102/followup/H
 
 
 A later [nonshipping conditioned-dry fallback experiment](../../../worklogs/h4-decision-checkpoint-0102/followup/conditioned-fallback-70bb-results/README.md) passed 30 scoped injected first-consumption checks and sensitive negative controls at zero and actual x4 latency. Its affected history still differed from the clean twin; this is a measurable alternate fault-block policy, not recovered phase-matched history or a complete recovery contract. Its cost and applicable native timing are unmeasured. The owner has not accepted this exceptional-output policy; ADR-0074 remains Proposed.
+
+The tested local reset clears both dry banks of the affected channel; the
+first-consumption oracle does not establish preservation of a valid same-channel
+fade bank. That is an additional explicit recovery-policy and verification
+limit, not an observed opposite-channel or Wet reset.
