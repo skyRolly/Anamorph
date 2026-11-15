@@ -2699,3 +2699,12 @@ is separate evidence and never replaces those complete final-head gates.
 
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
+
+### Replay provenance guard controls (2026-11-15)
+
+`source-lint` runs the synthetic `test_replay_provenance.py` Git and small
+CMake/Ninja controls, including diagnostic path restrictions, generated include
+shadowing, compiler-dependency and declared-result checks. This adds no product
+DSP build or historical benchmark to the lint lane. Actual receipt-controlled
+replays and platform validation are separately recorded; the synthetic gate
+cannot establish their numerical results or attest to system toolchains.

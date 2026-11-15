@@ -1,0 +1,15 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -841 +841 @@
+-    const auto hs = dst.haasSide;    const auto dm = dst.dimMode;
++    const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
+@@ -843 +843 @@
+-    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample;
++    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+@@ -849 +849 @@
+-    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm;
++    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
+@@ -851 +851 @@
+-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
++    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;

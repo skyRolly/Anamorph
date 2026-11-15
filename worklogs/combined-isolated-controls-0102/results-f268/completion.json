@@ -1,0 +1,7 @@
+{
+  "source": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "runs_recorded": 15,
+  "all_expected_outcomes": true,
+  "runner_exit_status": "unavailable: original command session no longer accessible",
+  "captured_log_limitation": "captured build log ends before all recorded controls; individual raw control outputs and identities are retained"
+}

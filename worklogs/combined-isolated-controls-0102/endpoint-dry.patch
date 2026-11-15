@@ -1,0 +1,8 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1996,2 +1996,2 @@
+-                aLw[i] = blendMultibandEnableSample (cdL[i], aLw[i], b);
+-                aRw[i] = blendMultibandEnableSample (cdR[i], aRw[i], b);
++                aLw[i] = cdL[i] + b * (aLw[i] - cdL[i]);
++                aRw[i] = cdR[i] + b * (aRw[i] - cdR[i]);

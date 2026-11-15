@@ -1,0 +1,24 @@
+--- baseline/AnamorphEngine.cpp
++++ diagnostic-mix_zero/AnamorphEngine.cpp
+@@ -2072,8 +2072,8 @@
+                 dryL = cleanL + ts * (alignL - cleanL);
+                 dryR = cleanR + ts * (alignR - cleanR);
+             }
+-            L[i] = dryL + m * (L[i] - dryL);
+-            R[i] = dryR + m * (R[i] - dryR);
++            L[i] = m == 0.0f ? dryL : dryL + m * (L[i] - dryL);
++            R[i] = m == 0.0f ? dryR : dryR + m * (R[i] - dryR);
+         }
+     }
+     else
+@@ -2109,8 +2109,8 @@
+             dryL = cleanL + ts * (alignL - cleanL);
+             dryR = cleanR + ts * (alignR - cleanR);
+         }
+-        L[i] = dryL + m * (L[i] - dryL);
+-        R[i] = dryR + m * (R[i] - dryR);
++        L[i] = m == 0.0f ? dryL : dryL + m * (L[i] - dryL);
++        R[i] = m == 0.0f ? dryR : dryR + m * (R[i] - dryR);
+     }
+ 
+     // ======================== MONO MAKER (post-Mix) =========================

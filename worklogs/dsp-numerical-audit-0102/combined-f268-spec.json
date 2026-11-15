@@ -1,0 +1,13 @@
+{
+  "purpose": "Re-execute the previously reviewed combined production source with a fresh build and the N2-02 and N2-03 selectors; this is historical integration evidence, not validation of a later head.",
+  "source_head": "f2686cb5b0b3687a3e343340f2494f59961aa83a",
+  "source_tree": "80c8c7670fb7e18ac7371dd8c0b7eb3dc07238b9",
+  "targets": ["AnamorphTests", "AnamorphStateTests"],
+  "runs": [
+    {"program": "AnamorphTests", "args": ["--n2-controls"], "expected_exit": 0},
+    {"program": "AnamorphTests", "args": ["--multiband-endpoints"], "expected_exit": 0},
+    {"program": "AnamorphStateTests", "prefix": ["xvfb-run", "-a"], "args": ["--n2-controls"], "expected_exit": 0},
+    {"program": "AnamorphTests", "args": [], "expected_exit": 0},
+    {"program": "AnamorphStateTests", "prefix": ["python3", "{checkout}/tests/state_isolation_tests.py", "--full-suite", "--", "xvfb-run", "-a"], "args": [], "expected_exit": 0}
+  ]
+}
