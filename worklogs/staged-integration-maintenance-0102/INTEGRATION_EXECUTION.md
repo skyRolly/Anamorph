@@ -62,3 +62,51 @@ its false-clean-history and injected-invalid-history controls failed 2/30 and
 8/28 respectively as expected. Its source/receipts and limitations are on
 `codex/0102-h4-recovery-followup` at `b4032243` and later. Neither experiment
 is a replay on actual merged main or an approved H4 recovery policy.
+
+## #238 merged; #239 retargeted
+
+The exact #237 main `8dfc08db` Build & Validate `43737668160`, CodeQL
+`43737668156`, and Microsoft analysis `43737863355` all completed successfully.
+#238 head `c3f31dab` passed its full branch Build & Validate `43737810405`,
+CodeQL `43737863163`, Microsoft analysis `43737862700`, and PR merge-source
+checks. Its merge tree was its head tree `f5fd8ca5a432c04986bbda203d79f613086611cf`.
+The authorized merge commit is `b4bf18f7980b796b89dea1dad8ed57fed267d626`,
+parents `8dfc08db` and `c3f31dab`, same tree. The prerequisite branch remains
+present and automatic deletion remains false. Post-merge main Build & Validate
+`43766535759`, CodeQL `43766535738`, and Microsoft `43766535834` started on
+`b4bf18f7`; do not treat them as complete until their results are recorded.
+
+#239 was explicitly retargeted to main and merged with it in head
+`fe2affc1fcfcf0c41f2376b28ab3fcbd4015d94b`, parents `b08d514f` and
+`b4bf18f7`, tree `10cc9c24e8b0d4ea90debd833c06373bd29f6373`. The engine files
+merged without textual conflict. Ten additive conflicts in changelog, README,
+coverage, repository map, source of truth, DSP architecture/graph, ADR-0004,
+TESTING and DSP registrations retained both corrections and their tests. The
+resolved source/test and those conflicted documents match the prior reviewed
+pre-H4 integration `84ffeaef`, except that coverage and TESTING additionally
+retain #237's four-line State-summary parser explanation and corresponding audit.
+The original audit and fixture changes remain intact. Local documentation,
+citation, 22-case provenance and state-coverage self-test/lint passed; the
+state-coverage self-test reported 112 cases at this source. Exact-head branch
+matrix and analyzers and PR merge-source checks were started. #239 remains open
+until those and #238 post-merge validation pass.
+
+A new source-bound H4 candidate search at provisional `70bbdc22` found actual
+finite-input post-Enable aligned overflow during Disable fades (including actual
+x4 wrapping); the observed delayed measurement reference was also non-finite.
+This is candidate evidence, not yet an unpatched-production classification.
+The separately preserved first trace attempt showed invalid ring writes/reads
+and later Mix/self-heal, but failed its own overly strict control premise and
+has no completed receipt. Follow-up traces and unpatched controls are required.
+The candidate remains nonshipping and ADR-0074 remains Proposed.
+
+A separate provisional N2-04 clone based on `70bbdc22` tests a bounded
+exception-only conditioned-ring scrub/preserve design; it is not yet a PR or
+validated on actual integrated main. Its selected-factor 2x/4x/8x Haas
+latency-stand-in regression passed 59/0; restored original ring clearing failed
+12/59 and unconditional retention failed 6/59. The latter controls include
+injected ring poison and actual non-finite input carried over the latency
+boundary. The first natural-input test incorrectly expected same-block healing,
+failed 6/56, and was corrected after observing the selected-factor latency.
+The host-independent results are provisional until their source/patch/build and
+logs are committed and the final actual-main correction is reviewed and tested.
