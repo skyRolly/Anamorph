@@ -19419,3 +19419,7 @@ raw/aligned-history clearing and missed timely recovery, while a separate direct
 kernel witness bounds a post-check arithmetic concern. TESTING and ADR-0074
 record their actual scope and remaining reachability limitation. Historical
 measurements and the Proposed decision status remain intact.
+
+## Link later H4 evidence from dated checkpoint (2026-11-15)
+
+The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewed before this update. The initial unmeasured-cost statement is now explicitly dated, and the later separate nonshipping recovery and instruction evidence is linked without treating it as an accepted architecture decision. Historical measurements and production source are unchanged.
