@@ -146,3 +146,8 @@ finite-endpoint dry-source interpolation overflow. The latter remains a
 counterfactual observation until independently reproduced without the fallback.
 No production correction or exceptional policy is authorized; ADR-0074 remains
 Proposed.
+
+A [bounded unpatched-production search](shipping-secondary-search-70bb-results/README.md)
+found no secondary finite-operand dry-source overflow in 216 extreme-input
+cases, including 108 actual x4 wraps. This does not prove unreachability; the
+diagnostic Enable-widening control remains positive for that later boundary.

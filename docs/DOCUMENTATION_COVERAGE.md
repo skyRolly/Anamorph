@@ -19440,3 +19440,5 @@ dry-source failure remains demonstrated under a diagnostic fallback only.
 Updated the current H4 decision, TESTING, known-issue and repository index
 references; preserved the earlier witness and original measurements. The new
 policy comparison is nonshipping and does not accept ADR-0074.
+
+The additional nonshipping 216-case search and its bounded negative result are linked from the H4 policy and TESTING entries; the prior diagnostic positive control is retained.

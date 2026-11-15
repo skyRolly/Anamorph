@@ -42,7 +42,7 @@ opposite-sign operands overflowing the historical interior Enable expression,
 then actual aligned writes/reads and self-heal at Mix 0.4 with OS off and x4.
 A diagnostic exceptional-only widening prevented those writes for that case,
 but seven later dry-source interpolation failures remained; that second
-boundary is only a counterfactual result so far. Neither a pre-Enable finite
+boundary is only a counterfactual result so far. A [bounded unpatched search](shipping-secondary-search-70bb-results/README.md) found none in 216 cases; that is not a general reachability proof. Neither a pre-Enable finite
 scan nor this one fallback establishes the complete H4 recovery contract.
 N2-09 is separate from N2-08 and the N2-03 endpoint correction.
 
