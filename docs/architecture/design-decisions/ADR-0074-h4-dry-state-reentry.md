@@ -80,7 +80,7 @@ approval, main integration, native DAW behavior and listening.
 
 ## Independent recovery follow-up (2026-11-14)
 
-The [isolated LR4 witness](../../../worklogs/h4-review-followup-0102/README.md) produces finite filter output while an internal state overflows, followed by non-finite output on the next sample. It refutes output finiteness as a general proof of state finiteness. An A2 engine witness confirms hidden invalid dry state at a gated block boundary with finite monitored dry and wet output. Its subsequent zero block also occurs with no Mix dip and after a dry-only reset, so its cause is not isolated to re-entry. The full bank/fade/latency/recovery matrix remains untested. The earlier recommendation for A2 is therefore conditional on resolving this gap; the evidence-supported next step is targeted recovery investigation and cost measurement before selecting a production implementation. Accepting A2 now would mean explicitly accepting an unproven recovery boundary as well as the measured processing overhead. Other admissible decisions remain a supported modified candidate, continued investigation, retaining H4 with its known limitation, or deferral. **Status remains Proposed.**
+At the earlier 2026-11-14 checkpoint, the [isolated LR4 witness](../../../worklogs/h4-review-followup-0102/README.md) produced finite filter output while an internal state overflows, followed by non-finite output on the next sample. It refutes output finiteness as a general proof of state finiteness. An A2 engine witness confirms hidden invalid dry state at a gated block boundary with finite monitored dry and wet output. Its subsequent zero block also occurs with no Mix dip and after a dry-only reset, so its cause is not isolated to re-entry. The full bank/fade/latency/recovery matrix remains untested. The earlier recommendation for A2 is therefore conditional on resolving this gap; the evidence-supported next step is targeted recovery investigation and cost measurement before selecting a production implementation. Accepting A2 now would mean explicitly accepting an unproven recovery boundary as well as the measured processing overhead. Other admissible decisions remain a supported modified candidate, continued investigation, retaining H4 with its known limitation, or deferral. **Status remains Proposed.**
 
 ## Production extreme-input trace (2026-11-14)
 
@@ -115,3 +115,7 @@ status of the negative run. This supports that specific ownership control; it
 does not cure A2's hidden-state detection gap or establish the recovery matrix
 and cost of a modified detector. Continue targeted investigation. **Status
 remains Proposed.**
+
+## 2026-11-15 consumption-aware candidate checkpoint
+
+The [nonshipping candidate checkpoint](../../../worklogs/h4-decision-checkpoint-0102/README.md) narrows recursive-state checks to consumed states and processed banks, with a fresh receipt and 40 focused passing checks. It has not established correct finite aligned history across an exceptional first consuming block or the complete recovery contract; its cost is unmeasured. The separate N2-08 wet overflow is not an H4 or A2 causation claim. Continue the specified boundary experiment before selecting a candidate, or retain/defer the documented limitation. **Status remains Proposed; no production implementation is authorized.**

@@ -19402,3 +19402,7 @@ and checks copied probe inputs. TESTING and CI_CD describe the synthetic
 source-lint gate and the separate need for actual product replay controls.
 Required declared side outputs and markers are recorded; an exit-only result
 is not a numerical oracle. Historical reports, logs and manifests remain intact.
+
+## H4 candidate checkpoint documentation audit (2026-11-15)
+
+Before editing, the current H4 packet, ADR-0074, README and TESTING were checked for drift: the README still said all work was unmerged after #242, and the ADR contained an earlier causal checkpoint preceding the separately identified N2-08 evidence. Scoped the former to the remaining DSP documentation/correction PRs and dated the latter. Added a nonshipping consumption-aware candidate record, explicitly limited positive controls and unresolved recovery/performance conditions; updated TESTING and the Proposed ADR. Archived historical measurements and reports remain unchanged.

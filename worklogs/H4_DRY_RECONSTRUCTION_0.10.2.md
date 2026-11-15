@@ -477,3 +477,7 @@ of every other state family. A2 still misses the separate hidden-invalid-state
 witness, and the state-scan candidate still lacks the required matrix and cost
 measurement. The recommendation remains targeted investigation; ADR-0074 is
 Proposed and production H4 is unchanged.
+
+## Current candidate checkpoint — 2026-11-15
+
+A fresh nonshipping consumption-aware scan, its exact identities, 40 focused passing checks, state-lifetime contract, unresolved first-consumption/history boundary and bounded next experiment are recorded in the [current checkpoint](h4-decision-checkpoint-0102/README.md). The historical A2 instruction counts above are not measurements of this candidate. No candidate has established the complete recovery contract, no H4 production change is authorized, and ADR-0074 remains Proposed.

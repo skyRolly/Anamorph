@@ -1,0 +1,33 @@
+{
+  "purpose": "Negative control: ignore the non-active fade bank and the just-retired source, while all other experimental candidate behavior remains unchanged.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "2ebae9d2c9be067a0e788f37e0d5cc8a6c24864b",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/review-closure-0102/h4-consumption-active-only.patch",
+    "sha256": "76af9a06cb63039ebd162c3253c2514a84dbe3fd19f9992f2f3e947ee0c44784",
+    "purpose": "Candidate plus one active-bank-only scan mutation."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "consumption-probe",
+      "target": "AnamorphTests",
+      "commit": "4ed9b10db4031d4d30d238ce3d7d1844f7c4b4c1",
+      "path": "worklogs/review-closure-0102/h4-consumption-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "consumption-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL each live fade bank checked",
+        "FAIL retired source state checked after fade"
+      ]
+    }
+  ]
+}
