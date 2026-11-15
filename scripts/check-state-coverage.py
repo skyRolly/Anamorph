@@ -139,18 +139,18 @@ ENGINE_CPP = "src/dsp/AnamorphEngine.cpp"
 # ---------------------------------------------------------------------------------------------
 #  TARGET 1 -- the declaration table for `EngineParameters`.
 # ---------------------------------------------------------------------------------------------
-# A field is DISCRETE when a change to it is adopted at the bottom of the switch duck rather than
-# ramped by a smoother.  That single classification answers three of the four lists: `copyContinuous`
-# preserves exactly this set, and `discreteDiffers` / `processingDiffers` may name only fields from
-# it.  `sameParameters` is total over the struct and takes no classification at all.
-#
-# This set is verified against `copyContinuous` in BOTH directions on every run, so it cannot
-# silently drift from the code.  A field added to the struct and not listed here (or explicitly
-# left out of it, which is what "continuous" means) fails the lint.
+# DISCRETE describes stepped target values, not a single transition owner.
+# Bypass and Multiband Enable own independent output crossfades (ADR-0004).
+# Ordinary merges preserve only DUCK_DEFERRED; forced swaps bypass the merge
+# and defer the whole snapshot (ADR-0057). Selection lists still answer for
+# every stepped field, by comparison or an explicit exclusion.
 DISCRETE = {
     "channelMode", "monoSum", "swapLR", "msMode", "solo", "algorithm", "haasSide", "dimMode",
     "mbEnable", "mbBands", "monoMakerEnable", "oversample", "bypass", "autoGainMatch",
 }
+
+CROSSFADED = {"bypass", "mbEnable"}
+DUCK_DEFERRED = DISCRETE - CROSSFADED
 
 # Fields whose relevance CONDITION is deliberately different between `discreteDiffers` and
 # `processingDiffers`, with the reason. Empty today, and that is the finding: `dimMode` carries
@@ -625,14 +625,14 @@ def check_engine_params(params_h, engine_cpp):
                              f"`copyContinuous` {'saves' if saved else 'restores'} `{f}` but does "
                              f"not {'restore' if saved else 'save'} it. Half a save/restore pair "
                              f"either loses the field or overwrites it with itself."))
-    for f in sorted(DISCRETE - preserved):
+    for f in sorted(DUCK_DEFERRED - preserved):
         problems.append((ENGINE_CPP, 1,
-                         f"`{f}` is declared DISCRETE but `copyContinuous` does not preserve it, so "
+                         f"`{f}` is duck-deferred but `copyContinuous` does not preserve it, so "
                          f"a continuous merge would silently adopt the pending value early."))
-    for f in sorted(preserved - DISCRETE):
+    for f in sorted(preserved - DUCK_DEFERRED):
         problems.append((ENGINE_CPP, 1,
-                         f"`copyContinuous` preserves `{f}`, which is not declared DISCRETE. Either "
-                         f"add it to DISCRETE in scripts/check-state-coverage.py or stop "
+                         f"`copyContinuous` preserves `{f}`, which is independently crossfaded or continuous. Either "
+                         f"review its transition ownership or stop "
                          f"preserving it -- the two lists must describe the same partition."))
 
     # --- discreteDiffers / processingDiffers: DISCRETE fields, named or excluded with a reason -
@@ -1058,7 +1058,7 @@ def _clean_params_cpp(**kw):
     """A tree that must stay quiet: every list answering for every field."""
     fields = sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)
     return (_same_src(fields, **kw)
-            + _copy_src(DISCRETE)
+            + _copy_src(DUCK_DEFERRED)
             + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED))
             + _diff_src("processingDiffers", DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED)))
 
@@ -1187,10 +1187,14 @@ def self_test():
           check_engine_params(_params_src(), _clean_params_cpp(comment_only=("mix",))), "mix")
     fires("sameParameters comparing mismatched operands",
           check_engine_params(_params_src(), _clean_params_cpp(swap="bypass")), "bypass")
+    fires("copyContinuous swallowing a crossfaded request",
+          check_engine_params(_params_src(),
+                              _clean_params_cpp().replace(_copy_src(DUCK_DEFERRED), _copy_src(DUCK_DEFERRED | {"bypass"}))),
+          "bypass")
     fires("copyContinuous dropping a DISCRETE field",
           check_engine_params(_params_src(),
                               _same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE))
-                              + _copy_src(DISCRETE - {"solo"})
+                              + _copy_src(DUCK_DEFERRED - {"solo"})
                               + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED))
                               + _diff_src("processingDiffers",
                                           DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED))),
@@ -1198,7 +1202,7 @@ def self_test():
     fires("copyContinuous preserving a continuous field",
           check_engine_params(_params_src(),
                               _same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE))
-                              + _copy_src(DISCRETE | {"mix"})
+                              + _copy_src(DUCK_DEFERRED | {"mix"})
                               + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED))
                               + _diff_src("processingDiffers",
                                           DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED))),
@@ -1206,7 +1210,7 @@ def self_test():
     fires("copyContinuous saving a field it never restores",
           check_engine_params(_params_src(),
                               _same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE))
-                              + _copy_src(DISCRETE, half="mix")
+                              + _copy_src(DUCK_DEFERRED, half="mix")
                               + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED))
                               + _diff_src("processingDiffers",
                                           DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED))),
@@ -1216,7 +1220,7 @@ def self_test():
         other = ("processingDiffers" if fn == "discreteDiffers" else "discreteDiffers")
         other_ex = (PROCESSING_DIFFERS_EXCLUDED if fn == "discreteDiffers"
                     else DISCRETE_DIFFERS_EXCLUDED)
-        base = (_same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)) + _copy_src(DISCRETE)
+        base = (_same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)) + _copy_src(DUCK_DEFERRED)
                 + _diff_src(other, DISCRETE - set(other_ex)))
         victim = sorted(DISCRETE - set(excluded))[0]
         fires(f"{fn} dropping an unexcused DISCRETE field",
@@ -1240,7 +1244,7 @@ def self_test():
 
     def _pair(gd=None, gp=None):
         """Both selection lists over the full DISCRETE set, each optionally guarding `solo`."""
-        return (_same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)) + _copy_src(DISCRETE)
+        return (_same_src(sorted(DISCRETE) + list(_CONTINUOUS_SAMPLE)) + _copy_src(DUCK_DEFERRED)
                 + _diff_src("discreteDiffers", DISCRETE - set(DISCRETE_DIFFERS_EXCLUDED),
                             {"solo": gd} if gd else None)
                 + _diff_src("processingDiffers", DISCRETE - set(PROCESSING_DIFFERS_EXCLUDED),
