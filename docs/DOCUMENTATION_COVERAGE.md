@@ -3290,10 +3290,11 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2275-2327` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2275-2337` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
-liveness evidence to name the mechanism the tree actually runs.
+liveness evidence to name the mechanism the tree actually runs. The range shown is
+mapped to current source; at the dated sign-off it ended at line 2327.
 
 **A definition whose signature carried a comma inside template arguments was discarded whole.**
 `_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
@@ -19440,3 +19441,14 @@ not a proof of unreachability. Original evidence and Test 25 remain intact.
 
 The H4 decision packet now points to the later policy checkpoint, and the dated
 November 13 delivery ledger explicitly labels its PR-state table historical.
+
+## N2-04 conditioned dry self-heal documentation audit — 2026-11-15
+
+The pre-edit drift check found the D-02 implementation summary and graph still
+described unconditional conditioned-history clearing. Updated those live
+statements, added the bounded N2-04 implementation note to ADR-0009, recorded
+the new Test 59 selector and its negative controls in TESTING, and indexed the
+separate evidence record. The original D-02 and numerical audit remain dated
+historical evidence. N2-05 through N2-09 and H4 remain distinct.
+
+The signal-flow meter anchor was re-derived after the exceptional-path insertion; stage order is unchanged.

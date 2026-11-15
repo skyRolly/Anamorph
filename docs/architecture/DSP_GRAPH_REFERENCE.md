@@ -4,7 +4,7 @@ Node dependency topology of the serial DSP chain. Purpose: prevent unsafe reorde
 node may only be moved if **Can Reorder? = Yes** and the move preserves every invariant in
 `SIGNAL_FLOW.md`. Any "No" reorder requires an ADR + Architecture Review.
 
-Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2387 (`process`).
+Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2397 (`process`).
 ## Topology table
 
 | # | Node | Input depends on | Output feeds | Can Reorder? | Rationale / ADR |
@@ -21,7 +21,7 @@ Evidence [Verified]: src/dsp/AnamorphEngine.cpp:1388-2387 (`process`).
 | 4 | Mono Maker | mixed signal | Output stage | No | Must be POST-Mix so lows are mono at any Mix amount (0.8.0). :1108 |
 | 5 | Output stage (Gain/Match/Balance + duck) | post-Mono-Maker | Band Solo | No | Level Match measures here; gain/balance are final trims. :1110-1253 |
 | 6 | Band Solo monitor | produced output | NaN heal / Bypass | No | POST-EVERYTHING audition; mask 0 = identity. :1254 |
-| 6b | NaN/Inf self-heal | produced output | Bypass | No | Scrubs only non-finite processed samples, resets wet/conditioned state, and retains validated raw bypass scratch/history (ADR-0009 / D-02). `AnamorphEngine::process`, `nonFinite` (SIGNAL_FLOW :2275-2327) |
+| 6b | NaN/Inf self-heal | produced output | Bypass | No | Scrubs non-finite processed samples, resets wet/aligned state, retains finite conditioned history after scrubbing invalid slots, and retains validated raw bypass scratch/history (ADR-0009 / N2-04 / D-02). `AnamorphEngine::process`, `nonFinite` (SIGNAL_FLOW :2275-2327) |
 | 7 | Bypass crossfade | produced output + raw dry (0b) | meters | No | Exact endpoints preserve raw/processed bits; valid interior float results remain unchanged and only overflow is recomputed in double (Test 76 / R-01). `AnamorphEngine::process`, `bypassBlend` |
 | 8 | Metering tap | final output | GUI | No | Taps the monitored (post-everything) output. `scope.pushBlock` at :2383 |
 
