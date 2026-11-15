@@ -1,0 +1,28 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "base_head": "37b0a979f7c82b3bd34d0a71e46f7aea8bd9571d",
+  "cases": [
+    {
+      "script": "worklogs/n2-controls-0102/run_controls.py",
+      "flags": [],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.",
+      "output_created": false,
+      "original_sha256": "7fe63d6a7b25c3db0b18113df3fdcf6be2b80283a72640abc0065bcc51e4660d",
+      "guarded_sha256": "c65e00c33321194e15afc18ae19c322ec2cad49eb8d32f37d566c90c20a44d49",
+      "original_body_preserved": true
+    },
+    {
+      "script": "worklogs/n2-controls-0102/run_controls.py",
+      "flags": [
+        "-O"
+      ],
+      "exit": 1,
+      "stderr": "Historical relinker disabled: reused objects are unverified. Use worklogs/combined-isolated-controls-0102/run_controls.py and its reviewed specification.",
+      "output_created": false,
+      "original_sha256": "7fe63d6a7b25c3db0b18113df3fdcf6be2b80283a72640abc0065bcc51e4660d",
+      "guarded_sha256": "c65e00c33321194e15afc18ae19c322ec2cad49eb8d32f37d566c90c20a44d49",
+      "original_body_preserved": true
+    }
+  ]
+}

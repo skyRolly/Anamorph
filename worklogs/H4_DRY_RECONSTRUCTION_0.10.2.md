@@ -483,3 +483,18 @@ Proposed and production H4 is unchanged.
 The [separate later H4 follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) records additional scoped recovery controls and matched instruction measurements; it does not authorize an H4 implementation or accept ADR-0074.
 
 A fresh nonshipping consumption-aware scan, its exact identities, 40 focused passing checks, state-lifetime contract, unresolved first-consumption/history boundary and bounded next experiment are recorded in the [current checkpoint](h4-decision-checkpoint-0102/README.md). The historical A2 instruction counts above are not measurements of this candidate. No candidate has established the complete recovery contract, no H4 production change is authorized, and ADR-0074 remains Proposed.
+
+## Subsequent recovery-policy checkpoint — 2026-11-15
+
+The earlier dated candidate checkpoints above retain their original scope. The
+separate [first-consumption and policy follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md)
+records actual aligned-history reads and writes after injected dry-state fault,
+matched consumption-aware instruction comparisons, and the still-unapproved
+affected-channel recovery policy. A separate [unpatched-production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md)
+establishes N2-09, extreme-finite interior Enable overflow into aligned history;
+it is distinct from the endpoint correction and N2-08. The later dry-source
+overflow has not been demonstrated independently of a diagnostic fallback in
+the bounded [216-case search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md).
+No candidate establishes the complete recovery contract or representative
+native timing. Continued targeted investigation, retaining the limitation or
+deferral remain available; ADR-0074 remains Proposed and H4 production is unchanged.

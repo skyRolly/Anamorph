@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local input guards and disposable Ninja rebuild controls; no audio evidence."""
 import os
+import importlib.util
 import hashlib
 from pathlib import Path
 import subprocess
@@ -11,6 +12,12 @@ import replay_provenance as prov
 import replay_experiment as experiments
 import relink_verified as relink
 import compiler_inputs as inputs
+
+
+controls_path = Path(__file__).resolve().parents[1]/'combined-isolated-controls-0102'/'run_controls.py'
+controls_spec = importlib.util.spec_from_file_location('combined_replay_controls', controls_path)
+controls = importlib.util.module_from_spec(controls_spec)
+controls_spec.loader.exec_module(controls)
 
 
 def git(path, *args):
@@ -44,6 +51,15 @@ class Provenance(unittest.TestCase):
 
     def cache(self, source, juce):
         (self.build/'CMakeCache.txt').write_text(f'CMAKE_HOME_DIRECTORY:INTERNAL={source}\nANAMORPH_JUCE_PATH:STRING={juce}\n')
+
+    def test_actual_dsp_and_full_state_summaries(self):
+        self.assertEqual(controls.parse_summary(b'720 checks, 0 failures\n'), (720, 0))
+        self.assertEqual(controls.parse_summary(b'392 checks, 44 failures\n'), (392, 44))
+        self.assertEqual(controls.parse_summary(b'16555 checks, 0 failure(s)\n'), (16555, 0))
+        self.assertEqual(controls.parse_summary(b'1 checks, 1 failure\n'), (1, 1))
+        self.assertEqual(controls.parse_summary(b'1 checks, 1 failure\n16555 checks, 0 failure(s)\n'), (16555, 0))
+        self.assertIsNone(controls.parse_summary(b'16555 checks, 0 failure(s) extra\n'))
+        self.assertIsNone(controls.parse_summary(b'16555 checks, failure(s)\n'))
 
     def test_matching_checkout_and_build(self):
         self.assertEqual(prov.verify_inputs(self.source, self.build), self.juce)

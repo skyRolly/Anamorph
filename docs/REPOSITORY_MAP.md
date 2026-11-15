@@ -398,3 +398,10 @@ The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/READM
 - `docs/architecture/design-decisions/ADR-0074-h4-dry-state-reentry.md` — Proposed H4 warm-state/recovery/CPU tradeoff, not Accepted.
 
 - `worklogs/0102_DSP_DELIVERY_2026-11-13.md` — N2-02/N2-03 independent review heads, combined validation, H4/V2-01 decision and preserved P3 queue.
+
+`tests/n2_test_support.h`, `n2_control_tests.h` and `n2_processor_control_tests.h` provide nonshipping N2-02 observers and discriminating engine/processor regressions (DSP77/State159). `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md` records implementation and validation.
+
+- `tests/n2_endpoint_tests.h` — actual Multiband Enable kernel and engine endpoint coverage (Test 23 extension).
+- `worklogs/MULTIBAND_ENDPOINTS_0.10.2.md`, `worklogs/n2-endpoints-0102/` — N2-03 source identities, controls, logs and portable replay.
+
+- [Independent H4 recovery follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) — committed nonshipping policy, history and N2-09 evidence at reviewed source `70bbdc22`.
