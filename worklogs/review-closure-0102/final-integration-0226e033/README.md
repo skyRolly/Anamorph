@@ -51,3 +51,14 @@ Microsoft analysis `43705181510` were started for this integration identity.
 The source-bound full DSP/State and isolated mutation replay is specified in
 `integration-0226e033-controls-spec.json`; record its actual completion and
 results separately. A prior-head success is not an exact-head result.
+
+The isolated attempt on `0226e033` completed with container exit **1**. Its 15
+selected mutation/control results matched expectations; full DSP passed
+**5,614/0**. Full State itself exited zero and printed **16,555 checks, 0
+failure(s)**, but the runner's summary parser recognized only `failure` or
+`failures`, so it recorded no State summary and correctly returned failure for
+its unmet parser assertion. This is a verification-runner defect, not a State
+product-test failure. Its [identity, exact raw streams and container exit](isolated-attempt/identity.json)
+are retained; the previously disconnected client left the captured build log
+incomplete. Correct the parser and rerun the affected control before treating
+this result as a successful outer replay.
