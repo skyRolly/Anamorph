@@ -169,3 +169,42 @@ merge-source checks passed; its exact-head Build & Validate `43766678200`
 remains in its valgrind step. No success is claimed before that run completes.
 A research-only cancellation request briefly returned HTTP 503 and succeeded
 on retry; no required PR or main check was cancelled.
+
+## #239 merged; #240 retargeted and staged
+
+#239 head `fe2affc1fcfcf0c41f2376b28ab3fcbd4015d94b` passed exact-head
+Build & Validate `43766678200`, CodeQL `43766685820`, Microsoft analysis
+`43766685909`, and the PR merge-source/dependency checks. Current main and PR
+base were independently resolved, the prerequisite branch and deletion setting
+checked, and no unresolved review threads were present. The owner-authorized
+merge commit is `377173bb5e3c023e28f07d5ed5a3834fccb3af8c`, parents
+`b4bf18f7` and `fe2affc1`, tree `10cc9c24e8b0d4ea90debd833c06373bd29f6373`
+matching the checked merge tree. Actual-main Build `43771546559`, CodeQL
+`43771546557` and Microsoft `43771546579` started; completion is pending.
+
+#240 was explicitly retargeted from `codex/0102-n2-evidence` to main and
+merged with `377173bb` in head `ae606b4230c3a23d1efac174c97408dc348df01f`,
+parents `22e56b32` and `377173bb`, tree
+`a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c`. Its five additive documentation
+conflicts use the independently rehearsed `ca5c6fc2` resolution; the full tree
+is identical to that rehearsal. Compared with `70bbdc22`, only the ten
+identified live documentation/decision-record files differ. Production source,
+tests, scripts and original audit bytes are identical to `70bbdc22`; relative
+to actual main `377173bb`, the engine differences are comments and Test 25's
+differences are comments and descriptive strings, with its execution and
+thresholds unchanged. ADR-0074 is Proposed. The new N2-09 and recovery-policy
+links are source-scoped, nonshipping evidence.
+
+Local documentation, citation, state-coverage self-test/lint and the 22-case
+provenance suite passed. A first direct `sha256sum -c` of the original audit
+reported three missing `.log` files because these streams are archived as
+`.log.gz`; checking all present manifest entries and hashing the three
+*decompressed streams* then passed. No archive was rewritten. Exact-head
+Build `43771716406`, CodeQL `43771745488`, Microsoft `43771748663`, plus PR
+merge-source checks, started on `ae606b42`; their results remain pending.
+
+All three former dependent PR bases now resolve to main. The prerequisite
+branch remains at `e64e11fb`; `delete_branch_on_merge` was false at assignment
+start and is still false, so no setting change or restoration was necessary.
+No branch was deleted. #240 remains open until its exact-head/merge-source and
+#239 actual-main post-merge validation pass.
