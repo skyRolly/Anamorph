@@ -1,0 +1,37 @@
+{
+  "purpose": "Isolated N2-04 unsafe-retention negative control against preparation source; engine-only mutation, identical committed test and allocation support bytes.",
+  "source_head": "623d3c33b6e381a34d09dd00fff5a59a6b3838ab",
+  "source_tree": "b01adc69a5d3ab23a2416560648b1a577eeffd3d",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/unsafe-retention.patch",
+    "sha256": "f01a947ea32b7281a1fedf281977679b7949406282371fdd32fd4a1cfad78f20",
+    "purpose": "Replace only the conditioned ring sanitation loop with unconditional retention."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n204-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/probe.cpp",
+      "support": [
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/AllocationGuard.h",
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/n2_conditioned_history_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "n204-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "109 checks, 6 failures",
+        "[FAIL] N2-04"
+      ]
+    }
+  ]
+}
