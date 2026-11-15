@@ -30,6 +30,11 @@ including in entries written before 0.9.9 gave it that name.
   destinations still wait for the complete-state duck bottom.
   Evidence: DSP Test 77 / State Test 159; ADR-0004 N2-02 correction. [Verified]
 
+- **Multiband Enable fades land on the exact processed and dry-reference endpoints.**
+  The terminal sample and the rest of its block retain the destination bits;
+  interior fades keep their existing arithmetic. Evidence: Test 23 endpoint
+  extension, ADR-0004 and ADR-0005 implementation notes. [Verified]
+
 - **Bypass retains valid raw audio when extreme input overflows the processed signal.**
   The unaffected channel and later delay-aligned samples no longer disappear during
   the existing self-heal. Non-finite raw samples still become zero at readback.

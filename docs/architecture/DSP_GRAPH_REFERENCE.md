@@ -78,3 +78,7 @@ Evidence [Verified]: src/dsp/MonoMaker.h:43; MultibandWidth.cpp (fade trigger +
 `setBankCutoffs`); SoloMonitor.cpp (same pattern).
 
 N2-02 changes target adoption inside the existing control layer, not this graph: ordinary ducks retain live Bypass/Multiband Enable crossfades; forced bulk swaps retain whole-destination deferral. Tests 77/159.
+
+Multiband Enable endpoint correction N2-03 selects exact stage endpoints on each
+sample for both wet and A(dry); the graph and H4 gate remain unchanged.
+[Test 23 extension evidence](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).

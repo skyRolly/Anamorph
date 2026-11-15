@@ -7770,6 +7770,30 @@ Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP
 
 DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
 
+## Multiband Enable stage endpoints (N2-03, Test 23 extension)
+
+`AnamorphTests --multiband-endpoints` selects 392 checks also run by the complete
+suite. The private production kernel is exercised with independently specified
+endpoint bits, including signed zero, and unchanged interior arithmetic. Engine
+legs copy only the production filter state before processing, then independently
+compute unblended wet/A(dry) destinations from the actual pre-Multiband input.
+The kernel is checked directly; the actual aligned-dry and Level-Match reference
+buffers are checked separately. Both Match-off and Match-on compare the actual
+engine output against independently reconstructed wet/dry boundaries followed by
+Mix rounding. For Match-on, a copy of the pre-block gain smoother uses the actual
+post-measure target; its final state is checked against the engine. This does not
+independently validate the measurement algorithm. A counterfactual confirms that
+some legacy wet errors survive downstream rounding and some are legitimately
+masked, so the final output is not a direct bitwise stage observation for every
+sample. A wet-only call-site mutation must fail output checks even when every
+aligned-dry check passes; a dry-only mutation must fail the dry/reference checks. The numbered inventory remains 76 (an extension to
+existing transition coverage, as with the R-01 Test 76 extension).
+
+44.1/48/96 kHz, blocks 64/127/256, 2/3/4 bands, Mix 1/.4 and Match off/on cover
+both terminal endpoints, subsequent samples within the terminal block, repeated
+and reversed transitions and non-neutral unequal stereo. Source identity,
+negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
 ## Numerical audit replay provenance controls (2026-11-14)
 
 `python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
@@ -7807,3 +7831,5 @@ exit-only run is not an oracle or proof of undeclared side artifacts.
 ## Retired review relinkers (2026-11-14)
 
 The old N2-02 relinker is intentionally disabled before any output is created; normal and `python -O` invocations are checked in `worklogs/n2-controls-0102/retired-relinker-controls.json`. Current isolated N2-02 and forced-adoption mutations use the reviewed shared fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
+
+The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
