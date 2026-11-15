@@ -3106,7 +3106,7 @@ canary "is the maintenance the repository already performs for its four lints", 
 when it was decided: `check-realtime.py` was introduced by the change set that ADR authorised. An
 Accepted ADR records what was decided and known then; it is not a place to re-count. Left, with the
 reason, so the next reader does not re-derive it. Also left, as before: the same phrasing in
-`.github/workflows/build.yml:3899` and `.github/workflows/build.yml:3984`, this round being
+`.github/workflows/build.yml:3904` and `.github/workflows/build.yml:3989`, this round being
 documentation-only. **Both are path-qualified now, and the second one earned it twice over.** It
 was `:2836` and bare, which was right when written — the phrasing sat there through `a925e79` —
 then went stale in `be99567` and stayed stale through `12c545d` and `31c3b1b`, because a bare
@@ -3140,7 +3140,7 @@ silence is being read.
 
 **Read off the workflow, not off the review.** The report asserted that
 `check-clang-warnings.py` and `check-gcc-warnings.py` "self-test in one job and gate in another".
-They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:809` and gates at
+They do not — `check-clang-warnings.py` self-tests at `.github/workflows/build.yml:814` and gates at
 `:944`, both in one job; `check-gcc-warnings.py` self-tests at `:2530` and gates at `:2551`,
 both in `linux-lto-tests`. All seven pairs are same-job. (The Clang pair was in `linux-clang` when
 this round ran; ADR-0030 folded that job into `linux`, moving both lines together and leaving the
@@ -18323,7 +18323,7 @@ in the stripped text, which is consumed at exactly one place, the regex inside `
 
 **Documentation drift found by the sweep, and corrected:** `docs/procedures/TESTING.md`'s
 `source-lint` row listed the portability, realtime and citation checkers as that job's local
-equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:571-576` has run in
+equivalent and omitted the dispatch lint, which `.github/workflows/build.yml:576-581` has run in
 that job since round 27.
 
 ## 55th pass — 2026-09-17, round 35 (two review findings: a recursive notification's endpoint, and the timer door's lock order)
@@ -19356,3 +19356,27 @@ committed-stub LR4 witness. Historical archived evidence remains unchanged.
 ## N2-02 replay-entry audit — 2026-11-14 UTC
 
 The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+## POSIX cleanup fixture publication and finalization review (2026-11-14)
+
+The documentation drift check found that the new handshake control and changed
+fixture on PR #242 had testing instructions but no coverage-audit entry. TESTING
+and CI_CD now describe the explicit observer acknowledgement, the legacy and
+fixed controls, and the identity-unavailable finalizer fault controls. The
+independent finalizer targets only an owned isolated session, establishes group
+ownership before signaling, reaps adopted same-group children and treats failed
+or unknown cleanup as failure. The existing three production-cleanup cases and
+their budget remain intact. These Linux fixture checks do not establish the cause
+of the earlier hosted failure or native Rosetta cleanup behavior. Earlier audit
+entries and the original historical failure records are retained.
+
+## Diagnostic path and compiler-input provenance review (2026-11-15)
+
+Drift review confirmed that the previous replay description did not rule out
+retained paths deleted by a diagnostic patch or newly shadowing generated
+headers during controlled relinking. The maintained helper now restricts patch
+path/mode changes, records generated include trees and compiler dependencies,
+and checks copied probe inputs. TESTING and CI_CD describe the synthetic
+source-lint gate and the separate need for actual product replay controls.
+Required declared side outputs and markers are recorded; an exit-only result
+is not a numerical oracle. Historical reports, logs and manifests remain intact.

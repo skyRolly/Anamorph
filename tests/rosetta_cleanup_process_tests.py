@@ -21,8 +21,9 @@ sys.modules[spec.name] = driver
 spec.loader.exec_module(driver)
 
 # Only these fixture processes are created. The third leader exits, leaving
-# one same-group child. The harness adopts that known child to prevent a zombie
-# leaking to an unrelated init. PR_SET_CHILD_SUBREAPER is process-local, not a
+# one same-group child. The harness adopts fixture children to prevent zombies
+# leaking to an unrelated init, including if identity publication fails.
+# PR_SET_CHILD_SUBREAPER is process-local, not a
 # host security/permission setting, and the original value is restored.
 FIXTURE = r'''
 import json, os, signal, sys, time
@@ -32,15 +33,112 @@ if sys.argv[2]=='leader_exit':
     child=os.fork()
     if child:
         (root/'identity.json').write_text(json.dumps({'leader':leader,'child':child,'pgid':group}))
+        # Publish the child's identity before it can publish readiness. The
+        # observer must never read identity.json while its writer is still open.
+        (root/'identity-written').write_text('ready')
         until=time.monotonic()+1
         while not (root/'ready').exists() and time.monotonic()<until: time.sleep(0.005)
         os._exit(0)
+    until=time.monotonic()+1
+    while not (root/'identity-written').exists() and time.monotonic()<until: time.sleep(0.005)
+    if not (root/'identity-written').exists(): raise RuntimeError('fixture identity publication timed out')
 else:
     (root/'identity.json').write_text(json.dumps({'leader':leader,'child':leader,'pgid':group}))
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 (root/'ready').write_text('ready')
 while True: time.sleep(1)
 '''
+
+
+def independent_finally_cleanup(process, deadline, group_probe=None,
+                                kill_group=None, wait_group=None):
+    """Clean only this Popen's new-session group, without trusting identity.json.
+
+    The caller must have launched process with start_new_session=True and set
+    this test process as a child subreaper. No unrelated process can join the
+    fixture's new session. waitpid(-pgid) reaps adopted children in that group;
+    it never uses a process name or waits for children of another group.
+    """
+    group_probe = driver.group_members if group_probe is None else group_probe
+    kill_group = os.killpg if kill_group is None else kill_group
+    wait_group = os.waitpid if wait_group is None else wait_group
+    result = {'leader_reaped': False, 'owned_children_reaped': False,
+              'surviving_group_members': None, 'reaped': [], 'errors': []}
+    pgid = process.pid
+    if not isinstance(pgid, int) or pgid <= 1 or pgid == os.getpgrp():
+        result['errors'].append('invalid fixture-owned invocation group')
+        return result
+    # Do not signal a recycled PGID after the fixture has completely vanished.
+    # A live/unreaped direct leader pins its PID. Once that leader has been
+    # reaped, the subreaper's group-specific wait proves a live owned child is
+    # still present (and pins the group) before a signal is sent. The fixture
+    # creates only one child in its isolated session and no grandchildren.
+    group_owned = False
+    try:
+        if process.poll() is None:
+            group_owned = True
+        else:
+            while True:
+                try:
+                    pid, status = wait_group(-pgid, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if not pid:
+                    group_owned = True
+                    break
+                result['reaped'].append({'pid': pid, 'exit_code': os.waitstatus_to_exitcode(status)})
+                if time.monotonic() >= deadline:
+                    result['errors'].append('group ownership deadline exhausted')
+                    break
+    except Exception as error:
+        result['errors'].append('group ownership: ' + type(error).__name__ + ': ' + str(error))
+    if group_owned:
+        try:
+            kill_group(pgid, signal.SIGKILL)
+            result['group_KILL'] = 'sent'
+        except ProcessLookupError:
+            result['group_KILL'] = 'disappeared'
+        except Exception as error:
+            result['errors'].append('group KILL: ' + type(error).__name__ + ': ' + str(error))
+    else:
+        result['group_KILL'] = 'not needed or ownership unconfirmed'
+    try:
+        process.wait(timeout=max(0, deadline-time.monotonic()))
+        result['leader_reaped'] = True
+    except Exception as error:
+        result['errors'].append('leader wait: ' + type(error).__name__ + ': ' + str(error))
+    if result['leader_reaped']:
+        while True:
+            try:
+                pid, status = wait_group(-pgid, os.WNOHANG)
+            except ChildProcessError:
+                result['owned_children_reaped'] = True
+                break
+            except Exception as error:
+                result['errors'].append('group wait: ' + type(error).__name__ + ': ' + str(error))
+                break
+            if pid:
+                result['reaped'].append({'pid': pid, 'exit_code': os.waitstatus_to_exitcode(status)})
+                if time.monotonic() >= deadline:
+                    result['errors'].append('owned-child reaping deadline exhausted')
+                    break
+            elif time.monotonic() >= deadline:
+                result['errors'].append('owned-child reaping deadline exhausted')
+                break
+            else:
+                time.sleep(min(0.005, max(0, deadline-time.monotonic())))
+    available = min(0.5, max(0, deadline-time.monotonic()))
+    if available:
+        try:
+            result['surviving_group_members'] = group_probe(pgid, available)
+        except Exception as error:
+            result['errors'].append('group observation: ' + type(error).__name__ + ': ' + str(error))
+    else:
+        result['errors'].append('group observation deadline exhausted')
+    result['complete'] = (not result['errors'] and result['leader_reaped']
+                          and result['owned_children_reaped']
+                          and result['surviving_group_members'] == [])
+    return result
 
 
 def main():
@@ -71,7 +169,7 @@ def main():
             raise OSError(ctypes.get_errno(), 'PR_SET_CHILD_SUBREAPER for this fixture harness')
         reaper_set = True
         report['fixture_process_local_subreaper'] = {'pid': os.getpid(), 'original': old_reaper.value,
-            'scope': 'this test harness only; reaps only recorded fixture child PIDs'}
+            'scope': 'this harness only; reaps adopted children only in the owned fixture group'}
         save()
         for mode in ['initial_observation_failure', 'escalation_observation_failure', 'leader_exit']:
             if deadline - time.monotonic() < 5:
@@ -171,30 +269,11 @@ def main():
                     # is broken/no-op. No broad PID discovery or name-based kill.
                     final = case['independent_finally_cleanup']
                     if process is not None:
-                        try:
-                            need_cleanup = process.poll() is None or (identity is not None
-                                and identity['child'] != identity['leader'] and adopted_status is None)
-                            if need_cleanup:
-                                try:
-                                    os.killpg(process.pid, signal.SIGKILL)
-                                    final['group_KILL'] = 'sent'
-                                except ProcessLookupError:
-                                    final['group_KILL'] = 'disappeared'
-                            try:
-                                process.wait(timeout=min(0.5, max(0, deadline-time.monotonic())))
-                                final['leader_reaped'] = True
-                            except subprocess.TimeoutExpired:
-                                final['leader_reaped'] = False
-                            reap_adopted(min(time.monotonic()+0.5, deadline))
-                            final['adopted_child_reaped'] = identity is None or identity['child']==identity['leader'] or adopted_status is not None
-                            available = min(0.5, max(0, deadline-time.monotonic()))
-                            final['surviving_group_members'] = original_probe(process.pid, available) if available > 0 else None
-                        except Exception as error:
-                            final['error'] = type(error).__name__ + ': ' + str(error)
+                        final.update(independent_finally_cleanup(
+                            process, min(time.monotonic()+1.5, deadline), original_probe))
                     case['elapsed_seconds'] = round(time.monotonic()-case_started, 6)
                     save()
-            if (case['status'] != 'verified' or not final.get('leader_reaped')
-                    or not final.get('adopted_child_reaped') or final.get('surviving_group_members') != []):
+            if case['status'] != 'verified' or not final.get('complete'):
                 raise RuntimeError(mode + ' did not complete with owned fixtures reaped')
         report['status'] = 'verified'
     except Exception as error:

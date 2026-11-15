@@ -21,3 +21,21 @@ and formulas, but cannot identify the executable that generated those inputs.
 
 R-237-01 remains open: the unsafe legacy execution entry points are being disabled in the dependent PRs, but not every historical H4 experiment has a reviewed specification and verified replay. Real candidate, combined and isolated mutation runs cover only their stated source and workload. A historical command's status does not
 become a current provenance guarantee merely because it is executable.
+
+## Infrastructure versus historical replay (2026-11-15)
+
+R-237-02 restricts diagnostic patches to content-only edits of the same regular
+tracked paths and modes. R-237-03 adds generated include-tree identities,
+compiler dependency inspection and copied-packet checks to maintained replay
+and relink paths; pre-existing receipts without the required generated-input
+manifest are rejected. The shared runner can require and hash specified side
+artifacts and stdout markers; undeclared outputs and exit-only runs do not
+establish experiment completeness. These are supported-model guards, not host
+or compiler attestation. Actual receipt-controlled controls and current-head CI
+must be recorded before declaring infrastructure closure.
+
+R-237-01 retains its original broad scope. Historical H4 trajectory, recovery
+and benchmark workloads without reviewed specifications and verified reruns
+remain historical evidence only, not current reproduced measurements. The
+retired per-PR relinkers stay disabled. Their incomplete reproduction does
+not, by itself, negate the separately verified N2-02/N2-03 controls.

@@ -10,6 +10,7 @@ from unittest import mock
 import replay_provenance as prov
 import replay_experiment as experiments
 import relink_verified as relink
+import compiler_inputs as inputs
 
 
 def git(path, *args):
@@ -179,6 +180,105 @@ class Provenance(unittest.TestCase):
         target.write_text('intended diagnostic\n')
         (self.source/'src/new.h').write_text('untracked')
         with self.assertRaises(ValueError): prov.verify_source_tree(self.source, expected, patch, digest)
+
+    def test_diagnostic_path_and_mode_changes_are_unsupported(self):
+        expected = git(self.source, 'rev-parse', 'HEAD')
+        target = self.source/'src/source.cpp'
+        original = target.read_bytes()
+        patch = self.root/'path-change.patch'
+        target.unlink()
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        target.write_bytes(original)  # actual retained path was the original bypass
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+        target.unlink()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+        target.write_bytes(original)
+        target.unlink(); target.mkdir(); (target/'nested.h').write_text('nested\n')
+        git(self.source, 'add', '-A')
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--cached', '--binary', 'HEAD']))
+        git(self.source, 'reset', '-q', 'HEAD')
+        (target/'nested.h').unlink(); target.rmdir(); target.write_bytes(original)
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+        added = self.source/'src/added.cpp'; added.write_text('new input\n')
+        git(self.source, 'add', '-N', 'src/added.cpp')
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        git(self.source, 'reset', '-q', 'HEAD', '--', 'src/added.cpp'); added.unlink()
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+        renamed = self.source/'src/renamed.cpp'
+        git(self.source, 'mv', 'src/source.cpp', 'src/renamed.cpp')
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--cached', '--binary', '-M', 'HEAD']))
+        git(self.source, 'reset', '-q', 'HEAD', '--', 'src/source.cpp', 'src/renamed.cpp')
+        renamed.rename(target)
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+        target.chmod(0o755)
+        patch.write_bytes(subprocess.check_output(['git', '-C', str(self.source), 'diff', '--binary', 'HEAD']))
+        target.chmod(0o644)
+        digest = hashlib.sha256(patch.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'path or mode changes'):
+            prov.verify_source_tree(self.source, expected, patch, digest)
+
+    def test_generated_include_manifest_detects_changes_and_shadowing(self):
+        generated = self.build/'generated'; generated.mkdir()
+        header = generated/'config.h'; header.write_text('#define VALUE 1\n')
+        commands = [['c++', '-I'+str(generated), '-I'+str(self.source), '-I'+str(self.juce), '-c', 'x.cpp']]
+        expected = inputs.generated_include_manifest(commands, self.build, self.source, self.juce)
+        inputs.verify_generated_inputs(expected, commands, self.build, self.source, self.juce)
+        header.write_text('#define VALUE 2\n')
+        with self.assertRaisesRegex(ValueError, 'compiler-input'): inputs.verify_generated_inputs(expected, commands, self.build, self.source, self.juce)
+        header.write_text('#define VALUE 1\n')
+        (generated/'AnamorphEngine.h').write_text('shadow\n')
+        with self.assertRaisesRegex(ValueError, 'compiler-input'): inputs.verify_generated_inputs(expected, commands, self.build, self.source, self.juce)
+        with self.assertRaisesRegex(ValueError, 'lacks generated'): inputs.verify_generated_inputs(None, commands, self.build, self.source, self.juce)
+        with self.assertRaises(ValueError): inputs.generated_include_manifest([['c++', '@response']], self.build, self.source, self.juce)
+        with self.assertRaises(ValueError): inputs.generated_include_manifest([['c++', '-include', 'config.h']], self.build, self.source, self.juce)
+
+    def test_packet_and_required_result_inputs(self):
+        packet = self.root/'packet'; packet.mkdir(); support = packet/'support.h'; support.write_text('one\n')
+        before = inputs.directory_manifest(packet); support.write_text('two\n')
+        self.assertNotEqual(before, inputs.directory_manifest(packet))
+        output = self.root/'output'; output.mkdir()
+        run = {'stdout_contains': ['measured blocks'], 'required_artifacts': [{'path':'result.csv'}]}
+        with self.assertRaises((ValueError, OSError)): inputs.validate_artifacts(output, run, b'measured blocks')
+        result = output/'result.csv'; result.write_text('value\n')
+        with self.assertRaisesRegex(ValueError, 'already exists'): inputs.prepare_artifacts(output, run)
+        record = inputs.validate_artifacts(output, run, b'256 measured blocks')
+        self.assertEqual(record['artifacts']['result.csv']['sha256'], hashlib.sha256(result.read_bytes()).hexdigest())
+        with self.assertRaises(ValueError): inputs.validate_artifacts(output, run, b'wrong workload')
+        with self.assertRaises(ValueError): inputs.validate_artifacts(output, {'required_artifacts':[{'path':'../escape'}]}, b'')
+        with self.assertRaises(ValueError):
+            inputs.validate_artifacts(output, {'required_artifacts':[{'path':'result.csv','sha256':'0'*64}]}, b'')
+        result.unlink(); result.symlink_to(support)
+        with self.assertRaises(ValueError): inputs.validate_artifacts(output, run, b'measured blocks')
+
+    def test_dependency_inventory_and_relocation_guard(self):
+        packet = self.root/'packet'; packet.mkdir()
+        source = packet/'probe.cpp'; source.write_text('int main() {}\n')
+        local = packet/'support.h'; local.write_text('header\n')
+        dep = self.root/'probe.d'
+        dep.write_text(f'object: {source} {local} {self.source}/src/source.cpp\n')
+        files = {source: hashlib.sha256(source.read_bytes()).hexdigest(),
+                 local: hashlib.sha256(local.read_bytes()).hexdigest()}
+        inputs.verify_compile_dependencies(dep, self.build, self.source, self.juce, {}, files)
+        local.write_text('modified\n')
+        with self.assertRaisesRegex(ValueError, 'packet dependency changed'):
+            inputs.verify_compile_dependencies(dep, self.build, self.source, self.juce, {}, files)
+        local.write_text('header\n')
+        foreign = self.root/'foreign.h'; foreign.write_text('unverified\n')
+        dep.write_text(f'object: {source} {foreign}\n')
+        with self.assertRaisesRegex(ValueError, 'outside verified'):
+            inputs.verify_compile_dependencies(dep, self.build, self.source, self.juce, {}, files)
+        source.write_text('const char *p = __FILE__;\n')
+        with self.assertRaisesRegex(ValueError, 'relocated source'):
+            inputs.verify_relocated_source(source)
 
     def test_fresh_checkout_build_and_patch(self):
         cmake = self.source/'CMakeLists.txt'

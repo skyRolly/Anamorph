@@ -10,6 +10,8 @@ from pathlib import Path
 
 from replay_provenance import (ARCHIVE, BASE, JUCE, cache_values, fresh_build, git,
                                verify_archive_file, verify_inputs, verify_variant)
+from compiler_inputs import (directory_manifest, generated_include_manifest, relevant_compile_commands,
+                             verify_compile_dependencies, verify_generated_inputs, verify_relocated_source)
 
 
 def sha(path):
@@ -38,7 +40,9 @@ def link_objects(command, build):
 def main():
     tools = {str(Path(__file__).resolve()): sha(__file__),
              str(Path(__file__).with_name('replay_provenance.py').resolve()):
-                 sha(Path(__file__).with_name('replay_provenance.py'))}
+                 sha(Path(__file__).with_name('replay_provenance.py')),
+             str(Path(__file__).with_name('compiler_inputs.py').resolve()):
+                 sha(Path(__file__).with_name('compiler_inputs.py'))}
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkout', type=Path, required=True)
     parser.add_argument('--build', type=Path, required=True)
@@ -77,6 +81,8 @@ def main():
     if not compiler:
         raise ValueError('fresh cache does not identify the C++ compiler')
     commands = subprocess.check_output(['ninja', '-C', str(build), '-t', 'commands', target], text=True).splitlines()
+    compile_inputs = relevant_compile_commands(commands, target)
+    generated = generated_include_manifest(compile_inputs, build, checkout, juce)
     cc = next(shlex.split(x) for x in commands if x.endswith('/tests/'+main_source) and ' -c ' in x)
     link = next(shlex.split(x) for x in commands if ' -o '+target+'_artefacts/Release/'+target+' ' in x)
     if link[:2] == [':', '&&'] and link[-2:] == ['&&', ':']:
@@ -92,20 +98,25 @@ def main():
                    'CPLUS_INCLUDE_PATH', 'LIBRARY_PATH', 'LANG', 'LC_ALL') if key in os.environ},
               'cache_sha256': sha(build/'CMakeCache.txt'), 'rules_sha256': sha(build/'build.ninja'),
               'compile_commands_sha256': sha(build/'compile_commands.json'),
-              'ninja_commands': commands, 'archive_probe_sha256': sha(archive_source),
+              'ninja_commands': commands, 'generated_include_manifest': generated,
+              'archive_probe_sha256': sha(archive_source),
               'tool_sha256': tools,
               'variants': {}}
     # Compile from this newly created output directory, not the archive's
     # directory, so an unverified neighboring header cannot shadow checkout
     # headers. The one archived absolute test path is translated as before.
-    source = out/archive_source.name
+    probe_dir = out/'probe-input'; probe_dir.mkdir()
+    source = probe_dir/archive_source.name
     source.write_text(archive_source.read_text().replace(
         '/workspace/anamorph-audit-113b9189/source/tests/', str(checkout/'tests')+'/'))
+    verify_relocated_source(source)
     obj = out/'probe.o'
     old_obj = cc[cc.index('-o')+1]
 
-    def compile_as(template, src, obj_path):
+    def compile_as(template, src, obj_path, quote_dir=None):
         command = template.copy()
+        if quote_dir is not None:
+            command[1:1] = ['-iquote', str(quote_dir)]
         for flag, value in [('-o', str(obj_path)), ('-c', str(src)),
                             ('-MF', str(obj_path)+'.d'), ('-MT', str(obj_path))]:
             if flag in command:
@@ -113,20 +124,37 @@ def main():
         subprocess.run(command, cwd=build, check=True)
         return command
 
+    packet_identity = directory_manifest(probe_dir)
+    verify_generated_inputs(generated, compile_inputs, build, checkout, juce)
     probe_compile = compile_as(cc, source, obj)
+    probe_dependencies = verify_compile_dependencies(str(obj)+'.d', build, checkout, juce, generated,
+                                                      {source: sha(source)})
+    if directory_manifest(probe_dir) != packet_identity:
+        raise ValueError('archived probe input changed during compilation')
+    verify_generated_inputs(generated, compile_inputs, build, checkout, juce)
     for name in selected:
         link_cmd = [str(obj) if arg == old_obj else arg for arg in link]
         entry = {'probe_source_sha256': sha(source), 'probe_compile': probe_compile,
+                 'probe_dependencies': probe_dependencies, 'probe_dependency_file_sha256': sha(str(obj)+'.d'),
                  'probe_object_sha256': sha(obj)}
         if name != 'baseline':
             original_engine = root/('engine-'+name+'.cpp')
-            engine = out/('engine-'+name+'.cpp')
+            engine_dir = out/('engine-input-'+name); engine_dir.mkdir()
+            engine = engine_dir/('engine-'+name+'.cpp')
             engine.write_bytes(original_engine.read_bytes())
+            verify_relocated_source(engine)
+            engine_input = directory_manifest(engine_dir)
             entry['engine_sha256'] = sha(engine)
             entry['patch_sha256'] = sha(root/(name+'.patch'))
             ec = next(shlex.split(x) for x in commands if x.endswith('/src/dsp/AnamorphEngine.cpp') and ' -c ' in x)
             engine_obj = out/('engine-'+name+'.o')
-            entry['engine_compile'] = compile_as(ec, engine, engine_obj)
+            entry['engine_compile'] = compile_as(ec, engine, engine_obj, checkout/'src/dsp')
+            entry['engine_dependencies'] = verify_compile_dependencies(str(engine_obj)+'.d', build, checkout, juce,
+                                                                        generated, {engine: sha(engine)})
+            entry['engine_dependency_file_sha256'] = sha(str(engine_obj)+'.d')
+            if directory_manifest(engine_dir) != engine_input:
+                raise ValueError('diagnostic engine input changed during compilation')
+            verify_generated_inputs(generated, compile_inputs, build, checkout, juce)
             link_cmd = [str(engine_obj) if arg == ec[ec.index('-o')+1] else arg for arg in link_cmd]
         binary = out/(args.probe+'-'+name)
         link_cmd[link_cmd.index('-o')+1] = str(binary)
@@ -140,7 +168,8 @@ def main():
             stdout, stderr = out/(name+'.stdout'), out/(name+'.stderr')
             stdout.write_bytes(result.stdout); stderr.write_bytes(result.stderr)
             entry['run'] = {'argv': invocation, 'cwd': str(out), 'exit': result.returncode,
-                            'stdout_sha256': sha(stdout), 'stderr_sha256': sha(stderr)}
+                            'stdout_sha256': sha(stdout), 'stderr_sha256': sha(stderr),
+                            'result_scope': 'exit and streams only; compare experiment outputs separately'}
             if sha(binary) != entry['binary_sha256']:
                 raise ValueError('binary changed during execution')
         verify_archive_file(root, archive_source, archive_source.name)
@@ -149,6 +178,9 @@ def main():
             if sha(engine) != entry['engine_sha256']:
                 raise ValueError('diagnostic engine changed during build or execution')
         verify_inputs(checkout, build)
+        if directory_manifest(probe_dir) != packet_identity:
+            raise ValueError('archived probe input changed during execution')
+        verify_generated_inputs(generated, compile_inputs, build, checkout, juce)
         if any(sha(path) != digest for path, digest in tools.items()):
             raise ValueError('replay tool changed during execution')
         record['variants'][name] = entry
