@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 145, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 48, in main
+    spec_bytes = blob(args.spec_commit, args.spec_path)
+  File "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 26, in blob
+    raise ValueError('packet commit must be a full SHA-1 commit')
+ValueError: packet commit must be a full SHA-1 commit

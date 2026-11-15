@@ -19333,6 +19333,22 @@ N2-03 endpoint coverage: `tests/n2_endpoint_tests.h`, Test 23 extension, and
 [the numerical/control record](../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md) establish
 exact stage endpoints independently of downstream Mix rounding.
 
+N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
+
+N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.
+
+## H4 extreme-input causal probe (2026-11-14)
+
+The documentation drift check found that the candidate-only hidden-state witness
+and the later zero-block observation must remain separate. The new nonshipping
+engine causal probe and its planned production-source specification are indexed
+in TESTING and the H4 follow-up worklog. They add state-family controls without
+changing shipping source or accepting ADR-0074. The later recorded trace locates
+the first observed invalid signal at Multiband and the following existing
+self-heal. The later copied-state control identifies a distinct extreme-finite wet
+LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
+issues and TESTING. Existing H4 findings and historical measurements remain.
+
 ## Numerical audit replay provenance follow-up (2026-11-14)
 
 The drift check found that the expanded synthetic replay tests and fresh-build
@@ -19364,6 +19380,20 @@ The former per-PR relinker accepted unverified objects and its whole-engine base
 ## N2-03 replay-entry and status audit — 2026-11-14 UTC
 
 The live summary still led with the historical 292-check oracle and offered unverified relinkers. Labeled the historical result, pointed to the current 392-check Match-on oracle and shared controlled mutations, and disabled the two legacy entry points. Original measurement logs are unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+## H4 replay-entry and state-lifetime audit — 2026-11-14 UTC
+
+Retired the three unverified legacy relinkers; retained their historical command bodies and measurements. Recorded the separately rebuilt isolated LR4 witness and source-based bank, fade, coefficient and aligned-history lifetimes, including the unvalidated recovery boundaries. H4 shipping behavior and Proposed ADR status remain unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+
+## H4 decision-package drift and recovery replay — 2026-11-14 UTC
+
+The drift check found that the dated roadmap still read as a current guarded
+candidate recommendation. It is now explicitly historical and the new follow-up
+records the hidden-state gap and N2-08. The decision packet, Proposed ADR-0074,
+follow-up worklog and TESTING also link the fresh source-bound repeated
+channel-recovery and reset-both control. They state its limited scope and the
+negative runner's unobserved outer status; original evidence remains unchanged.
 
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 

@@ -840,8 +840,8 @@ round-trip (bit-exact), transparent default, true-bypass null + latency match, M
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
 solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
-Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric), the split-movement regression
+Wave 2 / H4: aggregate mono RMS through a Mix dip after a gated full-wet stretch;
+this default-crossover noise case does not establish worst-frequency/sample-level reconstruction), the split-movement regression
 (`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
 must stay < 18 cents (the accepted controlled-FM bound of the R(f) = 4·max(1, f/300) oct/s
 slew-limited smoother, ADR-0015 final + slow-drag fix) through drags and the whole catch-up —
@@ -7794,6 +7794,28 @@ both terminal endpoints, subsequent samples within the terminal block, repeated
 and reversed transitions and non-neutral unequal stereo. Source identity,
 negative controls and replay commands: [worklog](../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
 
+## H4 claim boundary (N2-01 / V2-01)
+
+Test 25 retains both original RMS assertions and its default noise/crossover configuration. It does not establish worst-frequency/sample-level phase reconstruction. The [optional low-frequency oracle and recovery/cost probes](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) are nonshipping evidence; the oracle intentionally fails current H4. Integrate it into mandatory CI with an approved production correction, not before.
+
+## H4 extreme-input diagnostic follow-up (2026-11-14)
+
+The nonshipping `worklogs/h4-review-followup-0102/engine_cause.cpp` records wet
+and dry crossover-state observations and applies separately selected state-family
+reset controls after the recorded extreme-input stimulus. Its accompanying
+committed specification identifies the historical combined production source.
+The corrected execution and instrumented stage trace identify Multiband as the
+first observed invalid output stage in this stimulus, followed by existing
+self-heal. See the follow-up worklog for the fresh-build receipt,
+independent resets and the superseded preliminary observer. This is a
+nonshipping causal probe, not a mandatory regression or H4 fix.
+
+The later copied-state LR4 control localizes N2-08 to an extreme-finite wet
+numerator overflow and compares one diagnostic widened step. An active-Velvet
+reset does not prevent the observed block; the earlier Haas reset was inactive.
+The arithmetic control is scoped to the recorded first sample and does not
+validate a production correction or the complete subsequent tail.
+
 ## Numerical audit replay provenance controls (2026-11-14)
 
 `python3 worklogs/dsp-numerical-audit-0102/test_replay_provenance.py` exercises
@@ -7833,3 +7855,15 @@ exit-only run is not an oracle or proof of undeclared side artifacts.
 The old N2-02 relinker is intentionally disabled before any output is created; normal and `python -O` invocations are checked in `worklogs/n2-controls-0102/retired-relinker-controls.json`. Current isolated N2-02 and forced-adoption mutations use the reviewed shared fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
 
 The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
+
+
+
+The three old H4 probe/recovery/endpoint relink entry points are intentionally disabled before output creation; normal and `python -O` rejection controls are recorded in `worklogs/h4-review-followup-0102/retired-relinker-controls.json`. Committed specifications and shared fresh-build or receipt-checked runners cover the stated follow-up witnesses; other historical experiments remain separately scoped and are not automatically reproducible.
+
+
+A new source-bound nonshipping H4 recovery repeat exercises four left-channel
+guard activations and compares the untouched right dry integrators with an
+independent reference. A reset-both mutation changes 4/4 right-state matches to
+0/4. The [decision packet](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md)
+links the inputs and limits. This does not establish complete A2 recovery or
+make the failing-on-main low-frequency oracle mandatory.

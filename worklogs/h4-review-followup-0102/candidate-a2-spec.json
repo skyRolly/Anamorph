@@ -1,0 +1,43 @@
+{
+  "purpose": "Re-execute the recorded a2 candidate gated-boundary witness and dry-reset/no-dip controls from a fresh full candidate build.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "1ccf6b17cd47f2a9de06b9e971dc54c9cf7e112b",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-review-followup-0102/candidate-a2-003c.patch",
+    "sha256": "42770fa61429031bfcf214f82779affdcdd925adcc5c79e3f35453f4d34a4d79",
+    "purpose": "Reproduce the recorded a2 nonshipping dry-bank recovery candidate."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "engine-controls",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-review-followup-0102/engine_controls.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "engine-controls",
+      "args": [],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-controls",
+      "args": [
+        "r"
+      ],
+      "expected_exit": 0
+    },
+    {
+      "program": "engine-controls",
+      "args": [
+        "n"
+      ],
+      "expected_exit": 0
+    }
+  ]
+}

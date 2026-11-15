@@ -3212,3 +3212,32 @@ DSP comparison extension is the next headless engineering increment. NR-010 need
 identified hardware for actual budgets; NR-013 needs a pinned REAPER reproducer. NR-003
 remains Deferred; NR-004/005/007 retain recurrence triggers; NR-018/019 remain owner/
 legal/provisioning work. No merge or 0.10.0 release operation is included.
+
+
+### Ordinary DSP maintenance delivery — 2026-11-13 (UTC)
+
+[The source-bound delivery ledger](0102_DSP_DELIVERY_2026-11-13.md) supersedes no
+historical measurement. Mandatory N2 audit preservation was committed first in
+#237. N2-02 ordinary-duck automation correction #238 and N2-03 exact Multiband
+Enable endpoints #239 are independent open reviews, with a separate disposable
+combined validation branch. Nothing is merged; product remains 0.10.1 and JUCE
+remains 9.0.5. At this delivery checkpoint, Proposed ADR-0074 provisionally
+recommended guarded dry-state continuity for N2-01, conditional on the owner's
+CPU/recovery tradeoff decision; the later hidden-state finding supersedes that
+recommendation as described below. Live V2-01
+claims are scoped to actual evidence; the failing mandatory H4 regression must
+accompany its eventual approved correction. N2-04–07 remain confirmed P3 and
+unimplemented. Next: review the independent fixes and decide H4; no release
+preparation is authorized by this execution.
+
+
+### H4 independent-review follow-up — 2026-11-14 UTC
+
+A2's output-only guard misses a demonstrated hidden invalid recursive state,
+so no recovery-complete candidate is recommended. The bounded state-scan
+experiment catches that case but still lacks a full recovery matrix and cost
+profile. The separate extreme-input zero block was traced to a wet LR4
+numerator overflow (N2-08, P3 review assessment), not established as an A2 or
+Mix-re-entry failure. Continue targeted recovery and representative-hardware
+measurement before choosing a candidate; retain or defer H4 as owner options.
+ADR-0074 remains Proposed and no H4 production change is authorized.

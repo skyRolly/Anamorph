@@ -1917,14 +1917,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // glide parked at exactly 1 the blend is one LSB-level rounding pass of the
         // wet (out = dry + 1*(wet-dry)); with Match off AND not mid-engage the match
         // target is never read. So when no enable/bypass crossfade is in flight
-        // either, the dry bank (6 LR4/sample -- half the multiband cost) and the
+        // either, the dry bank (4 bands: 6 LR4 + 4 allpass calls/sample) and the
         // blend loop are skipped. Class B by design: the gated output is the EXACT
         // wet instead of its m=1 float re-blend, and the live Measure readout
         // follows the delay-aligned CLEAN dry while gated. Both dry delay rings
-        // keep being written below, so a Mix dip re-engages against warm lock-step
-        // history; the dry bank's cutoffs can never drift while gated -- they are
-        // fixed per crossover bank and always assigned with the wet's at a fade
-        // start (0.8.10, KI #1). Exact compares, no epsilon.
+        // keep being written below, but the skipped recursive dry-filter state
+        // is cold/stale at re-entry (N2-01; H4 decision worklog). Coefficient
+        // synchronization is separate: each fixed bank's cutoffs are assigned
+        // with the wet's at a fade start. Exact compares, no epsilon.
         fullWetIdle = ! blending
                    && ! mixSmooth.isSmoothing()
                    && ! (std::abs (mixSmooth.getCurrentValue() - 1.0f) > 0.0f)
@@ -2024,9 +2024,9 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         // flight. The output already IS the wet, so the m=1 blend below (one
         // LSB-level rounding pass) is skipped along with the smoothstep -- and a
         // settled mixSmooth tick is mutation-free, so not calling getNextValue()
-        // is state-identical (the H1/H10 argument). Everything stateful still
-        // runs: both dry delay rings advance in lockstep (warm re-engage) and the
-        // Level-Match reference is filled with the delay-aligned dry so the
+        // is state-identical (the H1/H10 argument). Both dry delay rings still
+        // advance in lockstep; this does not maintain the dry crossover state.
+        // The Level-Match reference uses the delay-aligned clean dry so the
         // Measure readout keeps tracking while gated.
         for (int i = 0; i < n; ++i)
         {
