@@ -1,0 +1,36 @@
+{
+  "purpose": "Final integration: fresh header clamp mutation preserves independent N2-02 and must fail the endpoint boundary control.",
+  "source_head": "a24b4efdfad4d267a63560079b0451c2c7487596",
+  "source_tree": "d506727ec77e6324eb116477183ac39b2def95be",
+  "patch": {
+    "commit": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+    "path": "worklogs/combined-isolated-controls-0102/endpoint-clamp.patch",
+    "sha256": "2755f6d94357a4ee1c822f1f542f5aa2f72064c44768b6b38c99c4caddd61893",
+    "purpose": "Change only the private endpoint kernel comparisons."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "runs": [
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--multiband-endpoints"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "392 checks, 1 failures"
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--n2-controls"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "720 checks, 0 failures"
+      ]
+    }
+  ]
+}
