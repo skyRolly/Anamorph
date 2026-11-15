@@ -34,3 +34,11 @@ actual outcomes before declaring integration ready. The prior `a24b4efd` Build &
 Validate run was cancelled by the new source, not a passed final-head run.
 The [staged owner procedure](../INTEGRATION_PROCEDURE_2026-11-15.md) records the
 repository's enabled automatic branch deletion and the required mitigation.
+
+The automatically triggered full matrices on the non-PR H4 research branch
+(run `43710675518` at `a26d0a4a`) and independent record branch (run
+`43711120655` at `43ac7ad4`) were explicitly cancelled while queued: neither is
+a proposed merge source, and they would duplicate unrelated hosted work while
+the required PR and integration runs remain active. This did not alter a CI
+gate or cancel a required final-head validation. Their local targeted evidence
+is recorded separately.
