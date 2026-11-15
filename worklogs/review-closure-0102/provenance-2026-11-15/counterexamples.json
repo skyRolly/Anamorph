@@ -1,0 +1,21 @@
+{
+  "source_verifier": "738b7b23211bb4c26258b3f8912efdad03ea4556",
+  "deletion": {
+    "expected": "tracked source.h deleted by reviewed patch",
+    "actual": "original tracked source.h retained",
+    "old_verifier": "accepted",
+    "resulting_expected_tree": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+  },
+  "generated_header": {
+    "build": "/workspace/review-closure-integration-3669-controls/fresh-build",
+    "product_source": "3669cf716b27de56dd125f29d0b2672598aebdc2",
+    "prior_receipt_commit": "1b72e068fe1f1911e3b76881c13ab5094f4906f8",
+    "probe_spec_commit": "7db4744bf0b7c314bfeeda0435f0177f284b9ff6",
+    "added_header": "AnamorphTests_artefacts/JuceLibraryCode/dsp/AnamorphEngine.h",
+    "header_utf8": "#pragma message(\"PROVENANCE_SHADOW_WITNESS\")\n#include_next \"dsp/AnamorphEngine.h\"\n",
+    "header_sha256": "8025cd766d4ece0d1ab54c7cea5694ba0f3a27c67cfe6dadaf7ebef7b003ae83",
+    "old_runner_exit": 0,
+    "compiler_reported_witness": true,
+    "cleanup": "Added test header and directory removed after execution."
+  }
+}

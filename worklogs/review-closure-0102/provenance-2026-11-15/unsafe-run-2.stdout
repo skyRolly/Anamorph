@@ -1,0 +1,4 @@
+FAIL injected dry state persists through gated block
+FAIL invalid dry state reaches actual Mix output and final guard
+FAIL final guard changes valid opposite wet state
+case=off fault=absent latency=0 gatedDiff=0 mixDiffL=0 mixDiffR=0 zeroL=0 restoredDiff=0 checks=10 failures=3
