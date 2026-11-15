@@ -25,6 +25,11 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
+  Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
+  destinations still wait for the complete-state duck bottom.
+  Evidence: DSP Test 77 / State Test 159; ADR-0004 N2-02 correction. [Verified]
+
 - **Bypass retains valid raw audio when extreme input overflows the processed signal.**
   The unaffected channel and later delay-aligned samples no longer disappear during
   the existing self-heal. Non-finite raw samples still become zero at readback.

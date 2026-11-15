@@ -14787,8 +14787,12 @@ static void testBypassExactEndpoints()
                     }
 }
 
+#include "n2_control_tests.h"
+
 int main (int argc, char* argv[])
 {
+    if (argc > 1 && std::strcmp(argv[1], "--n2-controls") == 0) { testCrossfadedControlsDuringOrdinaryDuck(); std::printf("%d checks, %d failures\n",checks,failures); return failures==0?0:1; }
+
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
     // stdout fully when it is a pipe -- which every CI runner is -- so a suite that
     // dies mid-run loses everything written since the last flush. That is exactly how
@@ -14928,6 +14932,7 @@ int main (int argc, char* argv[])
     testAbRecordCarriesThePostChangeEvidence();
     testANonFiniteVelvetDensityIsTheHeldDensity();
     testABulkSwapIsAdoptedOnlyWhenComplete();
+    testCrossfadedControlsDuringOrdinaryDuck();
     testBypassExactEndpoints();
     testBypassFiniteEndpointOverflow();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)

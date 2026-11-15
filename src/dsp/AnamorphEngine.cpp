@@ -830,25 +830,25 @@ void AnamorphEngine::adoptRememberedMatch (float db, bool measured, bool rearm, 
 
 void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParameters& src) noexcept
 {
-    // Keep dst's discrete fields; pull every smoothed/continuous field from src. Every
-    // state field is preserved here (merge consistency): mbBands so a deferred band-count
-    // change is still detected at the silent duck bottom (structural-change fix), and
-    // bypass for state consistency -- its click-free transition is the bypassBlend
-    // crossfade in process(), so preserving it here is neutral (a bypass-only change goes
-    // through the continuous path and never reaches copyContinuous).
+    // Ordinary ducks defer only the controls adopted at their bottom. Bypass and
+    // Multiband Enable own independent crossfades and remain live here, including
+    // when a pulse returns before this duck finishes. Forced swaps never call
+    // this merge: adoptSnapshot defers their entire destination until the bottom.
+    // pendingP still records the latest whole snapshot. Its ordinary bottom
+    // adopts those live targets without snapping or restarting their ramps.
     const auto cm = dst.channelMode; const auto ms = dst.monoSum; const auto sw = dst.swapLR;
     const auto md = dst.msMode;      const auto so = dst.solo;    const auto al = dst.algorithm;
-    const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
+    const auto hs = dst.haasSide;    const auto dm = dst.dimMode;
     const auto nb = dst.mbBands;
-    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample;
     const auto ag = dst.autoGainMatch;
 
     dst = src;
 
     dst.channelMode = cm; dst.monoSum = ms; dst.swapLR = sw; dst.msMode = md; dst.solo = so;
-    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
+    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm;
     dst.mbBands = nb;
-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;
+    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
 }
 
 void AnamorphEngine::setParameters (const EngineParameters& np) noexcept

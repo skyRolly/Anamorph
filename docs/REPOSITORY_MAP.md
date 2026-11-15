@@ -393,3 +393,5 @@ source-classification, before/after/partial-fix tests and retained configuration
 The [post-integration record](../worklogs/engineering-review/post-b2-integration.json) and its compressed streams retain actual-main component/path evidence. They are supporting engineering data, not policy or native/release acceptance.
 
 The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/README.md) preserves N2-01–07/V2-01 reports, original probes, diagnostic controls and compressed raw evidence.
+
+`tests/n2_test_support.h`, `n2_control_tests.h` and `n2_processor_control_tests.h` provide nonshipping N2-02 observers and discriminating engine/processor regressions (DSP77/State159). `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md` records implementation and validation.

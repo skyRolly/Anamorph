@@ -19325,6 +19325,10 @@ no graph, thread, parameter, serialization, version or dependency change.
 
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
 
+## N2-02 ordinary-duck crossfade targets
+
+The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
+
 ## Numerical audit replay provenance follow-up (2026-11-14)
 
 The drift check found that the expanded synthetic replay tests and fresh-build
@@ -19347,6 +19351,11 @@ the shared inventory and procedures identify which experiments have verified
 replacements and which remain open. Recorded a new full baseline and historical
 diagnostic replay, a fresh combined-source header-clamp control, and the separate
 committed-stub LR4 witness. Historical archived evidence remains unchanged.
+
+
+## N2-02 replay-entry audit — 2026-11-14 UTC
+
+The former per-PR relinker accepted unverified objects and its whole-engine baseline replacement could revert unrelated corrections. Disabled that historical entry point and directed current replay to the shared reviewed isolated-mutation procedure. Original measured results remain historical. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
 
 ## POSIX cleanup fixture publication and finalization review (2026-11-14)
 
