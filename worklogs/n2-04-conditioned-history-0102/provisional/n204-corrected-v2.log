@@ -1,0 +1,14 @@
+Test 59 extension: self-heal preserves finite conditioned dry history (N2-04)
+  selected factor 2, bad channel 0, latency 4: observed heal 1, current/history 1/1
+  selected factor 2, bad channel 1, latency 4: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  [FAIL] N2-04 input-poison premise: output self-heal scrubbed a non-finite result
+  [FAIL] N2-04: non-finite actual conditioned input cannot remain in preserved history
+  [FAIL] N2-04 input-poison premise: output self-heal scrubbed a non-finite result
+  [FAIL] N2-04: non-finite actual conditioned input cannot remain in preserved history
+  [FAIL] N2-04 input-poison premise: output self-heal scrubbed a non-finite result
+  [FAIL] N2-04: non-finite actual conditioned input cannot remain in preserved history
+56 checks, 6 failures
