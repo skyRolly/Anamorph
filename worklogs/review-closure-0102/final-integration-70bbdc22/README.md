@@ -42,3 +42,21 @@ a proposed merge source, and they would duplicate unrelated hosted work while
 the required PR and integration runs remain active. This did not alter a CI
 gate or cancel a required final-head validation. Their local targeted evidence
 is recorded separately.
+
+All three exact-head hosted runs have now completed successfully. The full
+matrix ran 16 jobs and skipped three conditional jobs; its successful Rosetta
+DSP/State, sanitizer, liveness, fuzz, Valgrind, pluginval, packaging and ABI
+steps are listed in the [captured hosted metadata](../final-hosted-validation-2026-11-15/README.md).
+Raw final job logs and current SARIF downloads were inaccessible as described
+there. No native DAW, listening, representative hardware or Level-5 acceptance
+is implied.
+
+The immediately preceding `a24b4efd` fresh local replay has now completed all
+17 controls with inner exit 0, including DSP **5,614/0**, State **16,555/0**,
+N2-02-only **316 engine and 12 processor failures**, premature forced adoption
+**8 failures**, and both/wet/dry endpoint mutations **88/44/44 failures** with
+the independent correction still passing. The separately fresh-built clamp
+control was **392/1** with N2-02 **720/0**. The exact receipts and limitations
+are in the [prior-source record](../final-integration-a24b4efd/README.md).
+The final `70bbdc22` source, tests and replay-tool bytes are identical; do not
+mislabel those local executions as having had the later Git identity.
