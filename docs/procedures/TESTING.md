@@ -7860,3 +7860,7 @@ separate executed test.
 Nonshipping [history-boundary controls](../../worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observe actual aligned writes, latency-offset reads, a wet-twin Mix reconstruction and affected-channel divergence after injected invalid state. A separate [unpatched-production trace](../../worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) demonstrates the extreme finite N2-09 Enable interpolation overflow and actual history read/self-heal at zero and x4 latency. Its widening switch is diagnostic, not an accepted production fix. These tests do not establish the full H4 recovery contract, representative native timing, or a change to Test 25.
 
 The [bounded unpatched search](../../worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) separately checks finite history operands at the later dry-source Mix expression across 216 extreme cases. No such second overflow was observed there; its positive diagnostic-fallback control and the scope limit remain distinct.
+
+A nonshipping conditioned-dry fault-block fallback and its first-consumption
+controls are specified in the H4 follow-up; a specification is not an executed
+result or approval of an exceptional-output policy.

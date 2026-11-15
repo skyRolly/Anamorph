@@ -1,0 +1,68 @@
+{
+  "purpose": "Nonshipping conditioned-dry affected-channel fallback on detected dry-state failure: first-consumption and aligned-history policy experiment with an on/off negative control. Deliberate injection is not natural reachability.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "f99091d9ad6c59dbc6f9c4bf7731178909e932a5",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-conditioned-fallback-70bb.patch",
+    "sha256": "1642fc7ddd4007cbf3f96e65be7de4c97ae47e4300ef382a1aeceb0572235597",
+    "purpose": "Rebase the nonshipping consumption-aware candidate plus a test-only switch choosing finite conditioned dry for the affected fault block."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "fallback-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-conditioned-fallback-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "fallback-probe",
+      "args": [
+        "positive"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off latency=0",
+        "case=x4 latency=6",
+        "30 checks, 0 failures",
+        "fallback=1"
+      ]
+    },
+    {
+      "program": "fallback-probe",
+      "args": [
+        "no-fallback"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL fault block publishes finite conditioned dry fallback"
+      ]
+    },
+    {
+      "program": "fallback-probe",
+      "args": [
+        "claim-clean"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that finite history equals clean reference"
+      ]
+    },
+    {
+      "program": "fallback-probe",
+      "args": [
+        "invalid-history"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "injected_invalid_history_detected=1",
+        "FAIL"
+      ]
+    }
+  ]
+}

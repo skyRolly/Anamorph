@@ -19442,3 +19442,6 @@ references; preserved the earlier witness and original measurements. The new
 policy comparison is nonshipping and does not accept ADR-0074.
 
 The additional nonshipping 216-case search and its bounded negative result are linked from the H4 policy and TESTING entries; the prior diagnostic positive control is retained.
+
+The nonshipping conditioned-dry fallback specification is indexed in the H4
+follow-up and TESTING before execution; no recovery guarantee is claimed.

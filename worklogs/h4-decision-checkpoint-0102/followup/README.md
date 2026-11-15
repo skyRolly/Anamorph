@@ -151,3 +151,9 @@ A [bounded unpatched-production search](shipping-secondary-search-70bb-results/R
 found no secondary finite-operand dry-source overflow in 216 extreme-input
 cases, including 108 actual x4 wraps. This does not prove unreachability; the
 diagnostic Enable-widening control remains positive for that later boundary.
+
+A separate [conditioned-dry fallback specification](h4-conditioned-fallback-70bb-spec.json)
+tests a temporary affected-channel policy at an injected first-consumption
+boundary, with a switch-off negative control. The specification is not a result
+or production policy; its runner outcome and limitations must be recorded
+separately before drawing a conclusion.
