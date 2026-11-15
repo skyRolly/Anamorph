@@ -1,0 +1,66 @@
+{
+  "purpose": "Fresh nonshipping consumption-aware candidate: independent ordinary re-entry oracle, full DSP suite, wet-state preservation, affected-output observations and repeated fault recovery.",
+  "source_head": "003c9a1a2558da6bd89e2624421a6e205eb8acdf",
+  "source_tree": "2cc679a22948e145f044a922b274cf0af314b55e",
+  "patch": {
+    "commit": "4ed9b10db4031d4d30d238ce3d7d1844f7c4b4c1",
+    "path": "worklogs/review-closure-0102/h4-consumption-candidate.patch",
+    "sha256": "820728b46738e6fae6179134cf0f355ccf2019202a1f1c1fdd69c88a0bf82777",
+    "purpose": "Maintain dry bank; check actually processed banks and allpass states; sanitize dry samples before consumption."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "consumption-probe-v2",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/review-closure-0102/h4-consumption-probe-v2.cpp"
+    },
+    {
+      "name": "h4-oracle",
+      "target": "AnamorphTests",
+      "commit": "df89edb67eb0ea36508d85f4842b67ea99c5c10a",
+      "path": "worklogs/h4-dry-state-0102/h4_probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "consumption-probe-v2",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "bands=1 relevant_states=0",
+        "bands=4 relevant_states=16",
+        "affected_output_differences=",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "h4-oracle",
+      "args": [
+        "h4-samples.csv"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "tone20,",
+        "tone50,",
+        "wet_changed_blocks"
+      ],
+      "required_artifacts": [
+        {
+          "path": "h4-samples.csv"
+        }
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "checks, 0 failures"
+      ]
+    }
+  ]
+}
