@@ -55,6 +55,6 @@ review scope, repeat conflict and semantic checks, and obtain review on the new
 identities. Do not assume an API's cached base SHA is the branch tip.
 
 The prepared validation identity is `a24b4efdfad4d267a63560079b0451c2c7487596`.
-Its [prior integration record](final-integration-0226e033/README.md) describes
+Its [integration record](final-integration-a24b4efd/README.md) describes
 retained files and conflicts. Hosted checks are tied to that exact source;
 future retarget or merge commits require their own applicable validation.
