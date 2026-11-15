@@ -1,0 +1,11 @@
+==820== Callgrind, a call-graph generating cache profiler
+==820== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==820== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==820== Command: /workspace/h4-instruction-baseline-run/glide 48000 128 4 1 0 1
+==820== 
+==820== For interactive control, run 'callgrind_control -h'.
+==820== 
+==820== Events    : Ir
+==820== Collected : 30730089
+==820== 
+==820== I   refs:      30,730,089
