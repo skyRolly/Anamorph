@@ -1,0 +1,34 @@
+{
+  "purpose": "Corrected nonshipping candidate trace with actual Enable input/output, ring publication/read, dry-source interpolation and final self-heal; widening is an exceptional-only comparison control.",
+  "source_head": "70bbdc22acdfd6286d13b1a15cb445367525c5e5",
+  "source_tree": "1a303d5fa65d5162b5dec823fc389a06776db664",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-trace-v2-70bb.patch",
+    "sha256": "68ef6874e4eb9e75513d1234981dff30241e7c2584417cfde2f45f2c2f2702b9",
+    "purpose": "Candidate plus nonshipping stage-observation callback and test-only exceptional widening switch."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "post-enable-trace",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-post-enable-trace-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "post-enable-trace",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off widen=0",
+        "case=x4 widen=1",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
