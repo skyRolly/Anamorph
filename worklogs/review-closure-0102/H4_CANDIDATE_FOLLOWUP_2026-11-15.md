@@ -97,3 +97,26 @@ input bound or an actual post-interpolation/history control. The first probe
 compile failed because its namespace collided with the POSIX `access` symbol;
 that failed attempt is retained separately, and the corrected probe and runner
 exited zero.
+
+## Recovery ownership and timing negative controls
+
+A separate fresh diagnostic build used the same candidate plus test-only,
+environment-selected recovery faults. The [specification, source patch,
+receipt and streams](h4-recovery-negative-results/identity.json) identify all
+inputs and commands. The no-fault run passed **48/0**. Each fault was applied
+only after an intentionally invalid dry state was injected; the negative
+executables exited one as expected and the outer runner exited zero:
+
+| Single injected recovery fault | Result |
+| --- | --- |
+| Reset affected-channel wet crossover state | 6/48 failures, including both-channel wet-state preservation |
+| Also reset the valid opposite dry channel | 4/48 failures in subsequent opposite-output recovery |
+| Clear raw bypass history | 2/48 failures in raw-history preservation |
+| Clear aligned history | 7/48 failures, including opposite and unwritten history preservation |
+| Omit detection/sanitization at the consuming boundary | 15/48 failures, including valid wet, conditioned and aligned state loss after later self-heal |
+
+These controls demonstrate sensitivity to the named injected failures in the
+zero-latency and actual x4 wrapped cases. The delayed-detection control does
+not directly trace the intermediate ring write, and none establishes natural
+reachability of the injected state or an acceptable affected-channel recovery
+policy. The nonshipping faults are not production changes.

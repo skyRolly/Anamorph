@@ -1,0 +1,15 @@
+bands=1 relevant_states=0
+bands=2 relevant_states=4
+bands=3 relevant_states=10
+bands=4 relevant_states=16
+FAIL both channels wet recursive state preserved
+engine=off affected_output_differences=128 max_delta=0.00921214 written_history_differences=128
+engine=off latency=0 retained_aligned=7 finite=1 right_equal=1
+FAIL repeated recovery keeps affected finite and opposite output equal
+FAIL repeated recovery keeps affected finite and opposite output equal
+FAIL both channels wet recursive state preserved
+engine=x4-drive affected_output_differences=122 max_delta=0.00838126 written_history_differences=128
+engine=x4-drive latency=6 retained_aligned=7 finite=1 right_equal=1
+FAIL repeated recovery keeps affected finite and opposite output equal
+FAIL repeated recovery keeps affected finite and opposite output equal
+48 checks, 6 failures
