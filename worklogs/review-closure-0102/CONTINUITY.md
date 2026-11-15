@@ -540,3 +540,47 @@ pin `33d7b85da1a04171e211befe2c739303b9a4c066`; the upstream annotated
 included in the integration. The review record's documentation check passed
 200 files and its citation check preserved 603 anchors at record commit
 `dd960a3c28cca5b2f0d0ef387b115b872cb11597`.
+
+### Final PR and integration readiness checkpoint (2026-11-15 UTC)
+
+The remaining #240 branch-push Build & Validate run `43650397900` finished
+**success** on exact head `b49c1345d07396524618d6be517c21edfa4beb4f`:
+16 jobs passed and the three conditional jobs were skipped. Its CodeQL,
+Microsoft analysis and same-repository PR merge-check had already passed on
+that head. `ci-final-240-build.json` retains the final job and step metadata.
+The #240 macOS Rosetta step reported success, but its job-log request returned
+zero bytes, so an internal capability skip cannot be ruled out for that head;
+its native Intel job passed separately. This does not affect the separately
+observed execution on exact integration `3669cf71`. The #240 PR description
+has been updated with these completed results.
+
+| Open PR | Current head | Actual base | Exact-head hosted validation | Review disposition |
+| --- | --- | --- | --- | --- |
+| #242 | `73c68f7af90fe0d437ea2087d3cb48f9153b7b89` | main `51e6250d34b44d838a51f9a5086105d39d6b0f29` | Build, CodeQL and Microsoft analysis passed | Independent owner review; Draft may be removed by the owner. R-242-01/02/03 fixed. |
+| #237 | `738b7b23211bb4c26258b3f8912efdad03ea4556` | main `51e6250d34b44d838a51f9a5086105d39d6b0f29` | Build, CodeQL and Microsoft analysis passed | Owner review of the scoped provenance improvement; R-237-01 remains open for the other documented historical H4 workloads. |
+| #238 | `f08d4ebfdc3710f3d3cae961a8d2c43a74c85fec` | #237 head | Build, CodeQL and Microsoft analysis passed | Focused correction ready for review after its evidence prerequisite; retarget and revalidate after an authorized merge. |
+| #239 | `30560d330a707f6087f14baacace78ffeac9b4df` | #237 head | Build, CodeQL and Microsoft analysis passed | R-239-01 resolved at the assertion level; focused correction ready for review after its evidence prerequisite. |
+| #240 | `b49c1345d07396524618d6be517c21edfa4beb4f` | #237 head | Build, CodeQL, Microsoft analysis and PR merge-check passed | Documentation ready for review; ADR-0074 remains Proposed and no candidate is authorized. |
+
+All five are open, reported mergeable and have auto-merge off; #242 remains
+Draft. The actual ref and merge-base overlap record is
+`pr-overlaps-final-2026-11-14.json`. The isolated intended source
+`3669cf716b27de56dd125f29d0b2672598aebdc2` contains all five exact heads and
+current main; its separate full hosted matrix and analyzers passed, and local
+full DSP, State and isolated-mutation evidence is recorded above. It is ready
+for owner review of the proposed staged integration, subject to explicit merge
+authorization and new exact-source checks after each retarget or conflict
+resolution. It is not a release sign-off.
+
+R-237-01 is **not fully closed**; the disabled legacy tools and incomplete
+historical H4 replay/benchmark specifications are tracked explicitly. N2-01
+and V2-01 remain P2, N2-04–07 remain P3, and N2-08 is a separate P3 review
+assessment. No candidate has demonstrated a complete recovery contract or
+representative native cost. Continue targeted investigation or have the owner
+explicitly choose to retain/defer the H4 limitation; do not accept ADR-0074 or
+ship a candidate on these results. Prior owner-attested JUCE 9.0.5 manual
+acceptance retains its recorded scope; it is not evidence of a new 0.10.2
+Level-5 audition or named DAW result. The final integration, applicable owner
+architecture/release decisions and applicable manual acceptance remain open
+before release; the P3 findings require documented disposition but are not
+asserted to be automatic hard release blockers.

@@ -1,0 +1,14 @@
+{
+  "run": 43650397900,
+  "job": 132617340076,
+  "source": "b49c1345d07396524618d6be517c21edfa4beb4f",
+  "exit": 0,
+  "job_log_bytes": 0,
+  "job_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "rosetta_step_bytes": 0,
+  "rosetta_step_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "test_counts": [],
+  "runtime_skip_warnings": [],
+  "executed": "unverified: successful step metadata may include an internal capability skip",
+  "note": "The job log request returned exit 0 and zero bytes; absence of raw output is not evidence of a skipped execution."
+}
