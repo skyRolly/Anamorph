@@ -1,0 +1,9 @@
+mix0 input=0x1p-2 exact=128/128 zero=0/128 recovery=0x1p-2
+mix0 input=0x1.5af1d8p+66 exact=128/128 zero=0/128 recovery=0x1p-2
+mix0 input=0x1.2ced32p+127 exact=0/128 zero=128/128 recovery=0x1p-2
+mix1 width0 input=100000000,-99999992 mathematical wet=4 output=0x0p+0,0x1p+3
+drive6 input=0x1p-2 output=0x1.ea0beep-2
+drive6 input=0x1.7d784p+26 output=0x0p+0
+drive6 input=-0x1.7d784p+26 output=0x0p+0
+overlap bypass: event-vs-no-event differing=1982 peak=0.233004361; no-duck control differing=1982 peak=0.460502297; duck-vs-normal peak=0.861589409
+overlap multiband: event-vs-no-event differing=2174 peak=0.685349643; no-duck control differing=2174 peak=0.902371049; duck-vs-normal peak=0.861589409
