@@ -1,0 +1,27 @@
+{
+  "purpose": "N2-07 production test-header port against baseline; held OS fade is injected.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "drive-control",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-pr-control-specs/drive-harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-pr-control-specs/n2_drive_endpoint_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "drive-control",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "held_path=1"
+      ]
+    }
+  ]
+}
