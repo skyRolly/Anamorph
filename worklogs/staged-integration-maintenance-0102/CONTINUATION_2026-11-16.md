@@ -179,3 +179,58 @@ After the final-main Build run finished with its original Windows configure
 failure, GitHub reran the failed Windows job on the same source `230da0e2` as
 attempt 2 of `43796315012`. That retry is in progress; its result and the
 original inaccessible failure log must remain separate.
+
+## Current staged and maintenance checkpoint
+
+The original final-main Windows Configure failure remained unattributed because
+its attempt-specific job-log redirect returned Forbidden. A failed-job retry
+on the same exact source `230da0e2` passed. Build & Validate `43796315012` now
+reports success, as do CodeQL `43796314706` and Microsoft C++ analysis
+`43796314750`; the original failed attempt and the retry are recorded
+separately in [main230-hosted-validation](main230-hosted-validation/README.md).
+These are automated results, not new manual or representative-hardware
+acceptance. The original deletion setting was false and remains false; the
+evidence branch is `e64e11fb`, and the H4 research ref is `f511198d`.
+
+[PR #243](https://github.com/skyRolly/Anamorph/pull/243) head `6a65b1d1`
+(N2-04) and [PR #244](https://github.com/skyRolly/Anamorph/pull/244) head
+`544ff751` (N2-06) are open, non-draft, mergeable, based on main `230da0e2`,
+and have auto-merge disabled. Both have fresh exact-head DSP/State, focused
+mutation controls and hosted Build, CodeQL and Microsoft analysis passing.
+The N2-06 exact-head receipt and distinct predecessor failures are in
+[n206-pr544ff-final-results](numerical-main230/n206-pr544ff-final-results/README.md).
+Separate owner review and merge authorization are required for each new PR.
+
+The independent H4 branch contains a nonshipping bank-local candidate against
+actual main. Its selected live-fade test passed 277 observations and preserved
+the checked other live bank in 24 deliberately injected recoveries; the
+expanded first-consumption controls passed 30 and the low-frequency oracle 8.
+The affected aligned history still differed from its clean twin in 32/32
+selected writes, and affected output differed in 32/32 zero-latency and 26/32
+actual x4/six-sample-latency samples. Finite output is not clean-reference
+recovery. Output-only invalidity with finite scans still has ambiguous bank
+attribution; post-Enable publication, acceptable exceptional trajectory,
+complete recovery and representative native performance remain unestablished.
+See the research branch at `f511198d` and its `bank-local-main230-results` and
+`bank-local-expanded-main230-results`. N2-09's distinct production witness is
+not an authorized production fix in these PRs. ADR-0074 remains Proposed.
+
+[Draft PR #245](https://github.com/skyRolly/Anamorph/pull/245) head
+`f78b53208623fbd7702194e41bd931d708a837fa` proposes the separate N2-07
+finite Drive endpoint correction. Its exact committed test header passed 13/13
+receipt-controlled positive assertions; main failed 5/13, and isolated
+settled, smoothing, held-envelope, missing invalid-operand protection and
+altered-interior mutations all failed their intended controls. The held fade
+is deliberately injected. [Receipts and the rejected abbreviated-SHA attempt](numerical-main230/n207-pr-header-controls/README.md)
+are committed at `62306735`. This does not replace the clean full-PR replay,
+matched cost comparison or hosted validation, which are in progress under
+their own identities. The earlier v2 failed discrimination premise remains
+preserved. Do not merge this new maintenance PR under the integration approval.
+
+N2-05 remains an independently confirmed dry-loss problem: selecting dry at
+Mix=0 alone can hide invalid wet state from the existing self-heal. N2-08's
+exceptional finite wet LR4 overflow remains separate; widening the filter can
+conflict with its all-input JUCE bit-equivalence contract and needs the
+applicable owner/architecture decision. No P3 finding is an automatic release
+blocker solely by priority. H4 policy, ADR acceptance, any new PR merges,
+release scope and applicable native/manual acceptance remain distinct.
