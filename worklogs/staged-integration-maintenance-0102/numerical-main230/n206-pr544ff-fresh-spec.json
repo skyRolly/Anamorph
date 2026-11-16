@@ -1,0 +1,14 @@
+{
+  "purpose": "Fresh exact-head PR #244 replay: typed Mix endpoint test, updated Multiband Enable oracle, ordinary-duck controls and full DSP/State suites.",
+  "source_head": "544ff75165b9b89f7b60606a231f3aaba35cc681",
+  "source_tree": "89c5b76642debae0b10542e0b3a2694f40aba63d",
+  "targets": ["AnamorphTests", "AnamorphStateTests"],
+  "probes": [],
+  "runs": [
+    {"program":"AnamorphTests","args":["--mix-wet-endpoint"],"expected_exit":0,"stdout_contains":["14 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--multiband-endpoints"],"expected_exit":0,"stdout_contains":["Match0 legacy wet endpoint visible/masked","Match1 legacy wet endpoint visible/masked","392 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--n2-controls"],"expected_exit":0,"stdout_contains":["720 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":[],"expected_exit":0,"stdout_contains":["5628 checks, 0 failures","ALL TESTS PASSED"]},
+    {"program":"AnamorphStateTests","prefix":["xvfb-run","-a"],"args":[],"expected_exit":0,"stdout_contains":["16555 checks, 0 failure(s)"]}
+  ]
+}
