@@ -1,0 +1,85 @@
+{
+  "scope": "retained side artifacts, workload markers and receipt-bound binary identities; not native timing",
+  "rows": [
+    {
+      "bands": 1,
+      "oversampling": "off",
+      "baseline": {
+        "instructions": 16614429,
+        "callgrind_sha256": "516b1c2953a91d68ff181945010778e9ecd43aad8e0d8af850997c20c5c679fb",
+        "stdout_sha256": "347a1431d62201e98fbf5c840b2ac0bf9593919d72f4170ef4d29072e44bd618",
+        "stderr_sha256": "17b1fcfda81c0759a974ecbaa0a49b96ef61aa0a846eb59fbd3c506f29640340",
+        "output": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.364134"
+      },
+      "candidate": {
+        "instructions": 16876573,
+        "callgrind_sha256": "f1b5dcba9a66471c21d5ed26e9a8acb3e879358aef6a7f21f7d78b42131ddc30",
+        "stdout_sha256": "347a1431d62201e98fbf5c840b2ac0bf9593919d72f4170ef4d29072e44bd618",
+        "stderr_sha256": "b1e0ee6ba65b1cf7f03f5727d216533f1ad0253eb22e385e4b82f320c464d256",
+        "output": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.364134"
+      },
+      "additional_instructions_per_block": 1024.0,
+      "percent_increase": 1.5778092644652428
+    },
+    {
+      "bands": 4,
+      "oversampling": "off",
+      "baseline": {
+        "instructions": 29579779,
+        "callgrind_sha256": "b76e60b716cbb3bda34638723cf173347f16588bef0eabec949ec33a09b2216f",
+        "stdout_sha256": "41365e16ce8358af4c3ba0b3b4131545d1d667944f063fa29b9960bb05d1ba39",
+        "stderr_sha256": "58cc80ef8516a0d31cac61372049341374934465c15645dfb9e2b1d45a9a96e3",
+        "output": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.452198"
+      },
+      "candidate": {
+        "instructions": 29841893,
+        "callgrind_sha256": "8c32c94200c59b8d74a58671112701ae0bb2d0356df72db00c83a18a06f4581d",
+        "stdout_sha256": "41365e16ce8358af4c3ba0b3b4131545d1d667944f063fa29b9960bb05d1ba39",
+        "stderr_sha256": "03e358560dcb5c38c0aff49287584668c9cf43a8dce469813297f0a9282e166b",
+        "output": "256 measured blocks; wrapped_blocks=0; fade_blocks=0; checksum=-0.452198"
+      },
+      "additional_instructions_per_block": 1023.8828125,
+      "percent_increase": 0.8861256198026362
+    },
+    {
+      "bands": 1,
+      "oversampling": "x4",
+      "baseline": {
+        "instructions": 53771085,
+        "callgrind_sha256": "de5d57d0e43ebb8e47d9960fe04665d54751ab0ace2e2d0a32315421c434e138",
+        "stdout_sha256": "64cbcc491522d771b4735ecc9e10242757fa29006e67d137e030b100684ceda6",
+        "stderr_sha256": "679f98f8cdf994be127ab1397011a7092cfc52bf3416a30844416b86ddfe6754",
+        "output": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.514586"
+      },
+      "candidate": {
+        "instructions": 54819631,
+        "callgrind_sha256": "bde8ff49ea36acab7eab393eaca0400f906d87974d65f89a0c20341ffa9a3117",
+        "stdout_sha256": "64cbcc491522d771b4735ecc9e10242757fa29006e67d137e030b100684ceda6",
+        "stderr_sha256": "208af967659674c5f828f5a927403649f5ac5f605149becd546d7ab9085bfdd3",
+        "output": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.514586"
+      },
+      "additional_instructions_per_block": 4095.8828125,
+      "percent_increase": 1.9500183044474553
+    },
+    {
+      "bands": 4,
+      "oversampling": "x4",
+      "baseline": {
+        "instructions": 66736019,
+        "callgrind_sha256": "900cd7dfc6b484aec50f8f4a677de4d5285f72ca981733a0b0bb5c2c4ea34378",
+        "stdout_sha256": "de7819ebe00cef27e297c7011405d0ff3f05bf646595ed14eb30062edcf845f5",
+        "stderr_sha256": "f354d733f2d791301f801c81623a0a2dd663bc7f1d6745abc8b13a3504e13688",
+        "output": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073"
+      },
+      "candidate": {
+        "instructions": 67784685,
+        "callgrind_sha256": "10add239257bb34311e352405a15dad3d93ae85b44531335ec8c4e79c724900c",
+        "stdout_sha256": "de7819ebe00cef27e297c7011405d0ff3f05bf646595ed14eb30062edcf845f5",
+        "stderr_sha256": "c73103ae3d67d8bdceeba23eb5bf415123a0dc57ec822245206f69d9989b77fe",
+        "output": "256 measured blocks; wrapped_blocks=256; fade_blocks=0; checksum=-0.0315073"
+      },
+      "additional_instructions_per_block": 4096.3515625,
+      "percent_increase": 1.5713643332545804
+    }
+  ]
+}

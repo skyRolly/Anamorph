@@ -1,0 +1,11 @@
+==11== Callgrind, a call-graph generating cache profiler
+==11== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==11== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==11== Command: /workspace/n207-cost-baseline/drive-cost 48000 128 4 0 1 1
+==11== 
+==11== For interactive control, run 'callgrind_control -h'.
+==11== 
+==11== Events    : Ir
+==11== Collected : 66736019
+==11== 
+==11== I   refs:      66,736,019

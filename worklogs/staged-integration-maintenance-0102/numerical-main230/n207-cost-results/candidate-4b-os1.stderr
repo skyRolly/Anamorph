@@ -1,0 +1,11 @@
+==15== Callgrind, a call-graph generating cache profiler
+==15== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==15== Using Valgrind-3.24.0 and LibVEX; rerun with -h for copyright info
+==15== Command: /workspace/n207-cost-candidate/drive-cost 48000 128 4 0 1 1
+==15== 
+==15== For interactive control, run 'callgrind_control -h'.
+==15== 
+==15== Events    : Ir
+==15== Collected : 67784685
+==15== 
+==15== I   refs:      67,784,685
