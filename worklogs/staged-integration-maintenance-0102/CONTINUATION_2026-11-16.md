@@ -234,3 +234,23 @@ conflict with its all-input JUCE bit-equivalence contract and needs the
 applicable owner/architecture decision. No P3 finding is an automatic release
 blocker solely by priority. H4 policy, ADR acceptance, any new PR merges,
 release scope and applicable native/manual acceptance remain distinct.
+
+## Drive PR head and measured cost update
+
+The initial #245 head `f78b5320` failed the hosted source-lint citation
+self-test. Local reproduction identified four stale dry-bank citation
+declarations; current head `44ef025aab46e09a8be7069184ce79071b7d5a09`
+corrects them without changing production or test bytes. The 267-case local
+self-test and 603 anchors passed, and the earlier failure and inaccessible
+hosted job log are retained in [n207-f78-hosted-failure](numerical-main230/n207-f78-hosted-failure/README.md).
+The current exact-head hosted source-lint passed; its other hosted checks are
+still running at this checkpoint. The separately launched fresh full build was
+for `f78b5320`, so its eventual result must retain that source identity.
+
+A [matched instruction comparison](numerical-main230/n207-cost-results/README.md)
+used main and the source-bound engine-only candidate at 48 kHz/128 samples:
+one/four bands increased 1.578%/0.886% unwrapped and 1.950%/1.571% with
+actual x4 wrapping. These are virtualized whole-engine instruction counts,
+not native timing, deadline or instance-capacity evidence; they do not measure
+the newer H4 candidate. PR #245 remains draft, open and unmerged pending final
+exact-head validation and owner review.

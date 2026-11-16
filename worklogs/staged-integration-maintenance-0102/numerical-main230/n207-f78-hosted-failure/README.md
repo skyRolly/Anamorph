@@ -3,8 +3,9 @@
 PR #245 head `f78b53208623fbd7702194e41bd931d708a837fa` had hosted
 source-lint job `133227653209` fail at **Citation-gate self-test (recognition,
 mapping and rewriting)** in Build & Validate run `43846435928`. Job metadata is
-retained. At initial retrieval the overall workflow was still in progress and
-GitHub would not provide its job log; no unobserved log content is inferred.
+retained. At initial retrieval the overall workflow was still in progress. After it was
+cancelled by the newer push, the job-log redirect returned Forbidden; no
+unobserved log content is inferred.
 
 Running the same self-test locally on that exact head reproduced four failures:
 automatic citation re-anchoring moved ADR-0005's dry-bank citation, but four
