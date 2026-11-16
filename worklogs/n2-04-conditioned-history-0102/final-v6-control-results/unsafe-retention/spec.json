@@ -1,0 +1,37 @@
+{
+  "purpose": "Exact-head N2-04 v6 unsafe-retention negative control; engine-only mutation and byte-identical committed test support.",
+  "source_head": "6a65b1d18a992c738b3f004f7690ea87d510bd40",
+  "source_tree": "81fb9c0a05a53a55194d53821fba7aa13426106d",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/n2-04-conditioned-history-0102/final-v6-controls/unsafe-retention.patch",
+    "sha256": "f01a947ea32b7281a1fedf281977679b7949406282371fdd32fd4a1cfad78f20",
+    "purpose": "Replace only conditioned ring sanitation loop with unconditional retention."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n204-v6-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/n2-04-conditioned-history-0102/final-v6-controls/probe.cpp",
+      "support": [
+        "worklogs/n2-04-conditioned-history-0102/final-v6-controls/AllocationGuard.h",
+        "worklogs/n2-04-conditioned-history-0102/final-v6-controls/n2_conditioned_history_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "n204-v6-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "125 checks, 6 failures",
+        "[FAIL] N2-04"
+      ]
+    }
+  ]
+}

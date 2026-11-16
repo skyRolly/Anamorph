@@ -1,0 +1,31 @@
+{
+  "purpose": "Exact-head N2-04 v6 positive receipt-controlled standalone oracle with byte-identical test support.",
+  "source_head": "6a65b1d18a992c738b3f004f7690ea87d510bd40",
+  "source_tree": "380f1a039eeb9deb1f1c7c28736a0c726dde30fa",
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n204-v6-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/n2-04-conditioned-history-0102/final-v6-controls/probe.cpp",
+      "support": [
+        "worklogs/n2-04-conditioned-history-0102/final-v6-controls/AllocationGuard.h",
+        "worklogs/n2-04-conditioned-history-0102/final-v6-controls/n2_conditioned_history_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "n204-v6-probe",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "actual wrapped algorithm",
+        "125 checks, 0 failures"
+      ]
+    }
+  ]
+}
