@@ -1,0 +1,31 @@
+{
+  "purpose": "N2-07 interior actual-engine isolated control; injected OS fade is a boundary test, not natural reachability.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "9390fc012be07971b2292f5b2212d59ad90ed442",
+  "probes": [
+    {
+      "name": "n207-v2-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-candidate-probe-v2.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n207-v2-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL selected non-endpoint output retains the recorded main-source bits",
+        "interior_output_hash=",
+        "held_path=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-v2-controls/interior.patch",
+    "sha256": "d59c8206038ecc4c03c4e708627ef0e7bc6f79848a5653caa7e2a4c57dce8938",
+    "purpose": "N2-07 interior engine-only candidate or targeted mutation."
+  }
+}

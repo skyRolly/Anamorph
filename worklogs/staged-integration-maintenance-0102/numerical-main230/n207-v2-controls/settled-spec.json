@@ -1,0 +1,31 @@
+{
+  "purpose": "N2-07 settled actual-engine isolated control; injected OS fade is a boundary test, not natural reachability.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "55b6ac3cc03a67c31d765ed5f3d63134544c02ae",
+  "probes": [
+    {
+      "name": "n207-v2-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-candidate-probe-v2.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n207-v2-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL full-wet one-band Drive endpoint retains saturated output",
+        "interior_output_hash=",
+        "held_path=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-v2-controls/settled.patch",
+    "sha256": "2c80c73e1d6ed8a3633036788b800181dfd1e98fa15af478bf343321e69601e7",
+    "purpose": "N2-07 settled engine-only candidate or targeted mutation."
+  }
+}
