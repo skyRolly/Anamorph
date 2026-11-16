@@ -57,3 +57,21 @@ unsafe unconditional retention failed **6/125**. These v6 runs are local
 development controls; the fresh `623d3c33` replay above used the earlier v5
 selector and must not be relabeled as a v6 execution. Full final-head and
 receipt-controlled v6 validation remain separate.
+
+## Actual integrated baseline
+
+The separate correction branch is based on actual integrated main
+`230da0e2b0b81422f7e3964eea2833c48266a963`, whose tree matches the
+previously tested rehearsal. Production change commit
+`d1e627f5e7921f0d5a0834e5fbc0b83eae9ceb43` and its later v6 regression
+commit preserve the source/test bytes of the scoped preparation. The
+[source-bound v5 DSP/State replay](https://github.com/skyRolly/Anamorph/tree/dd1556b3b995384cc93b341a3a4cdeaf66fd0b8b/worklogs/n2-04-conditioned-history-0102/provisional-v5/prep-623-results)
+and [v6 repeated-recovery development logs](https://github.com/skyRolly/Anamorph/tree/96d33bec/worklogs/n2-04-conditioned-history-0102/provisional-v6)
+retain their original source identities. Exact-head v6 replay, hosted validation
+and separate owner review are not implied by those earlier executions.
+
+The separately [receipt-controlled v5 controls](https://github.com/skyRolly/Anamorph/tree/73b75072/worklogs/n2-04-conditioned-history-0102/provisional-v5/serial-controls)
+passed 109/0 and detected the original-clear and unsafe-retention mutations at
+24/109 and 6/109 failures. A prior concurrent-attempt index-lock failure and
+its overlapping result remain recorded separately. The v6 local full DSP run
+passed 5739/0; it is not an exact-head hosted or source-bound v6 replay.

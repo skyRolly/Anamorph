@@ -28,7 +28,7 @@ including in entries written before 0.9.9 gave it that name.
 - **Valid conditioned dry history survives processed-output self-healing.**
   An unrelated invalid processed sample no longer clears finite delayed dry
   samples; invalid conditioned history is still replaced with zero.
-  Evidence: commit `1d14b86f65f3dc3713765c295de7fdc7ef02c87f`; DSP Test 59 extension; ADR-0009. [Verified]
+  Evidence: commit `d1e627f5e7921f0d5a0834e5fbc0b83eae9ceb43`; DSP Test 59 extension; ADR-0009. [Verified]
 
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
