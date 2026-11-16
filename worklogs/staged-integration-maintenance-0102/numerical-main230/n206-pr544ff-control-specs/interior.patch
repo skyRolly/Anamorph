@@ -1,0 +1,31 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index acd809e..c2b3df5 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2018,2 +2018,12 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+     float* lrR = loudnessRefScratch.getWritePointer (1);
++    // At exact Mix=1 the finite wet sample is the result; subtracting and
++    // re-adding the dry can cancel it. Preserve the original expression for
++    // every other coefficient and for invalid operands, so the existing final
++    // output self-heal still sees non-finite values.
++    const auto mixSample = [] (float dry, float wet, float m) noexcept
++    {
++        if (juce::exactlyEqual (m, 1.0f) && std::isfinite (dry) && std::isfinite (wet))
++            return wet;
++        return dry + (m < 0.25f ? 0.0f : m) * (wet - dry);
++    };
+     constexpr float kAlignMix = 0.05f;
+@@ -2074,4 +2084,4 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+             }
+-            L[i] = dryL + m * (L[i] - dryL);
+-            R[i] = dryR + m * (R[i] - dryR);
++            L[i] = mixSample (dryL, L[i], m);
++            R[i] = mixSample (dryR, R[i], m);
+         }
+@@ -2111,4 +2121,4 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+         }
+-        L[i] = dryL + m * (L[i] - dryL);
+-        R[i] = dryR + m * (R[i] - dryR);
++        L[i] = mixSample (dryL, L[i], m);
++        R[i] = mixSample (dryR, R[i], m);
+     }

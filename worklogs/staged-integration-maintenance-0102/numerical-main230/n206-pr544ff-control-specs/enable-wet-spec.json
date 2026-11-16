@@ -1,0 +1,32 @@
+{
+  "purpose": "PR #244 544ff751 committed test header against enable-wet isolated engine control; production inputs other than the engine remain main 230da0e2.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "9d95a25f12fbf931ba2219801e4fa54276a805f7",
+  "probes": [
+    {
+      "name": "enable-control",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n206-pr544ff-control-specs/enable-harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/numerical-main230/n206-pr544ff-control-specs/n2_endpoint_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "enable-control",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL N2-03 engine: actual output matches"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n206-pr544ff-control-specs/enable-wet.patch",
+    "sha256": "7c291ffe1cedb99b9361f2c749fa316889c4d6e8ce4dc03168ae3e26e5273cbb",
+    "purpose": "Reviewed engine-only enable-wet comparison against main; candidate code comes from PR head 544ff751."
+  }
+}
