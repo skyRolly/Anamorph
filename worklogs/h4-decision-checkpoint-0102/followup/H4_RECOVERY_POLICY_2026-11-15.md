@@ -1,10 +1,10 @@
 # H4 exceptional-output and aligned-history decision checkpoint
 
 ADR-0074 remains **Proposed**. This nonshipping analysis does not select a
-production policy. The latest exact experiments use reviewed integration
-`70bbdc22`; the staged merge's actual final main requires a separately bound
-replay. The earlier historical candidate and instruction data retain their
-original identities and do not become measurements of a later candidate.
+production policy. The original policy experiments used reviewed integration
+`70bbdc22`; later source-bound experiments use actual integrated main
+`230da0e2`. Historical candidate and instruction data retain their original
+identities and do not become measurements of a later candidate.
 
 ## Existing contracts and owner objectives
 
@@ -31,7 +31,7 @@ that injection occurs naturally or that all other recovery paths are covered.
 | Alternative | Available information and consequences | Current disposition |
 | --- | --- | --- |
 | Channel-local reset plus sanitized reconstructed samples | Bounded and preserves checked unrelated state, but the missing recursive trajectory is not reconstructed. Finite samples can still be wrong; the candidate's pre-Enable guard also missed N2-09. | Incomplete; needs an accepted affected-channel/history guarantee and post-interpolation protection. |
-| Substitute valid conditioned dry temporarily | A [one-sample injected fault-block experiment](conditioned-fallback-70bb-results/README.md) published finite conditioned input and preserved checked unrelated paths at zero and actual x4 latency. It is generally not crossover phase-matched to Wet; 32/32 affected history samples still differed from the clean twin, its reset covers both banks of the affected channel, and invalid conditioned samples need their own handling. | Scoped positive and negative controls pass; full recovery/phase policy, cost and owner approval remain open. |
+| Substitute valid conditioned dry temporarily | A [one-sample injected fault-block experiment](conditioned-fallback-70bb-results/README.md) published finite conditioned input and preserved checked unrelated paths at zero and actual x4 latency. It is generally not crossover phase-matched to Wet; 32/32 affected history samples still differed from the clean twin, and invalid conditioned samples need their own handling. The original reset cleared both same-channel banks; a later [bank-local diagnostic](bank-local-main230-results/README.md) preserves an independently valid other fade bank in 24 selected injections but still clears both for unattributed output-only faults. | Scoped positive and negative controls pass; full recovery/phase policy, cost and owner approval remain open. |
 | Substitute valid Wet temporarily | Wet can be preserved when only Dry fails, but using it as the affected output changes the requested Mix and does not reconstruct future aligned dry history; it is unavailable if Wet is invalid. | Requires a distinct exceptional-output policy and history strategy. |
 | Zero only known invalid samples | Bounded and can preserve finite unrelated data, but a finite bad sample or already-published wrong history is not identified merely by `isfinite`. | Insufficient as a complete contract. |
 | Reconstruct from saved state and input history | Exact replay needs an independently valid checkpoint and all relevant input/coefficient/bank transitions since it. The same arithmetic may reproduce overflow; work may spike. Fixed short-history replay already failed low-frequency/high-rate cases. | Needs a materially new bounded mechanism and architecture review; not established here. |
@@ -53,18 +53,31 @@ instructions/block in selected cells, so continuously maintaining the dry bank
 is the dominant measured cost. Reduced-output work previously saved under
 0.6%; a new filter representation is not automatically floating-point or
 state-trajectory equivalent under glides/fades. These virtual-host instruction
-counts are not native CPU time, deadlines or instance capacity. Exceptional
-recovery allocation and representative hardware remain unestablished.
+counts are not native CPU time, deadlines or instance capacity. No allocation
+was observed with live guards in 24 selected bank-local injected recoveries;
+comprehensive exceptional-path and representative-hardware evidence remain
+unestablished.
 
-Recommend completing the actual-main replay and the smallest discriminating
-policy/oracle experiment, including post-Enable and dry-source arithmetic,
-then presenting the measurable exceptional trajectory and native cost for an
-owner choice. Alternatively the owner may retain or defer the documented H4
-limitation. A material recovery policy or different filter representation needs
-its applicable architecture review and explicit owner approval before shipping.
+The actual-main replay and the selected first-consumption and live-fade
+experiments have now run. Recommend the smallest remaining discriminating
+experiment for output-only fault attribution and post-Enable/history
+publication, then specify the acceptable affected-channel trajectory and
+measure a supported candidate on representative native hardware. The former
+is unfinished engineering; whether an altered exceptional trajectory is
+acceptable is an owner policy decision. Alternatively the owner may retain or
+defer the documented H4 limitation. A material recovery policy or different
+filter representation needs its applicable architecture review and explicit
+owner approval before shipping.
 
 
 The [actual-main replay](actual-main230-results/README.md) reproduces the
 consumption-aware candidate's focused recovery and first-consumption results
 on `230da0e2`; it does not resolve the affected-channel policy or validate
 the separate fallback's full behavior.
+
+The later [expanded bank-local run](bank-local-expanded-main230-results/README.md)
+adds first-consumption, consumed-state, full-DSP and low-frequency controls on
+the integrated source. Its receipt records all seven executions; their streams
+and required artifact were independently rehashed, while the enclosing session
+exit was unobserved. The live-fade preservation observation is separate. No
+complete exceptional recovery policy or native performance claim follows.

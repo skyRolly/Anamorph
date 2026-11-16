@@ -19473,3 +19473,6 @@ The subsequent expanded bank-local recovery and low-frequency results are
 linked from TESTING and the Proposed ADR. Their separately verified outputs,
 unobserved outer-session status and unchanged affected-history limitation are
 retained; Test 25 and original evidence remain untouched.
+The recovery-policy comparison was also refreshed to distinguish the completed
+actual-main replay and selected allocation observations from its dated earlier
+unknowns, without treating those observations as a complete contract.
