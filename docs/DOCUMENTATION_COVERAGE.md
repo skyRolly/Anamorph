@@ -19454,3 +19454,12 @@ The nonshipping H4 actual-main replay specification is indexed in TESTING and th
 
 
 The completed H4 actual-main replay and its initially mis-invoked, then corrected independent oracle are indexed in the follow-up, Proposed ADR, H4 packet, TESTING and repository source indexes. Its affected-history and native-performance limits remain explicit.
+
+## H4 live-fade diagnostic coverage audit — 2026-11-16
+
+The pre-edit documentation and citation checks passed. The nonshipping
+live-fade probe and its source-bound receipt now have a TESTING entry and
+links from the decision packet and Proposed ADR-0074. The record distinguishes
+valid same-channel state reset from the checked preserved Wet and opposite
+channel, and selected allocation observations from real-time or native timing
+proof. The original historical evidence and Test 25 remain unchanged.

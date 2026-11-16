@@ -7871,3 +7871,15 @@ The H4 follow-up specifies an actual-main candidate replay at `230da0e2`;
 execution and its independent CSV oracle must be recorded separately.
 
 The [actual-main H4 candidate replay](../../worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) executed the scoped recovery, history and full DSP checks plus an independent low-frequency matrix oracle. Its first wrong-input oracle attempt and the corrected result are both recorded; Test 25 remains unchanged.
+
+### Nonshipping live-fade recovery control — 2026-11-16
+
+The [source-bound diagnostic](../../worklogs/h4-decision-checkpoint-0102/followup/fade-collateral-main230-results/README.md)
+injects invalid dry state into observed source and destination fade banks,
+checks the other bank against its own independently advanced state, and
+observes selected unrelated state and allocation-guard liveness. The tested
+fallback resets valid same-channel state in the other bank. The 277 passing
+policy-observation checks and two sensitive negative controls are scoped to
+deliberate injection; they do not establish natural reachability, complete
+recovery or native deadline safety. They are nonshipping evidence and do not
+change Test 25 or accept ADR-0074.

@@ -492,3 +492,20 @@ The [follow-up record](h4-decision-checkpoint-0102/followup/README.md) adds an e
 The subsequent nonshipping [conditioned-dry fallback experiment](h4-decision-checkpoint-0102/followup/conditioned-fallback-70bb-results/README.md) passed its scoped first-consumption oracle and negative controls but still produced affected history different from a clean twin. It does not establish a complete recovery policy or representative native cost; ADR-0074 remains Proposed.
 
 The [actual-main candidate replay](h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) reproduces the focused H4 recovery and low-frequency observations on `230da0e2`, with source-bound receipts and sensitive history controls. The candidate remains nonshipping and ADR-0074 Proposed.
+
+## Live-fade recovery ownership — 2026-11-16
+
+The separate conditioned-dry fallback was freshly tested on integrated main
+`230da0e2` during actual crossover fades. Across 12 selected lanes and 24
+deliberate invalid-state injections, it reset a valid recursive state in the
+other live dry bank of the affected channel on every recovery. The independent
+comparison advanced a copy of that bank's own state, including after an earlier
+recovery. Checked wet, opposite-channel, raw and conditioned state remained
+unchanged. The allocation guard observed no allocations in those 24 recovery
+calls with its liveness checks active. The [receipt, results and sensitive
+negative controls](h4-decision-checkpoint-0102/followup/fade-collateral-main230-results/README.md)
+define the limited scope. Injection does not prove natural reachability, and
+the selected calls do not prove worst-case timing or a complete recovery matrix.
+Preserving that valid same-channel bank, or explicitly justifying its loss, is
+an additional requirement for a supported policy. No exceptional-output
+contract has been accepted and ADR-0074 remains Proposed.

@@ -180,3 +180,12 @@ reproduces the 48-check recovery probe, 28-check history trace, sensitive
 negative controls, 5614-check DSP suite and eight low-frequency oracle
 assertions on `230da0e2`. A wrong-input oracle attempt is retained separately.
 The affected-history and policy limitations remain.
+
+The subsequent [actual-main live-fade collateral experiment](fade-collateral-main230-results/README.md)
+passed 277 scoped checks and observed 24/24 resets of valid same-channel
+state in the other live dry bank. Its false-preservation and fallback-disabled
+negative controls each failed 24 assertions as intended. The allocation guard
+observed no allocations in those selected 24 injected recovery calls, with
+its liveness checks active. These are deliberate fault injections and do not
+establish natural reachability, complete recovery or a real-time deadline.
+The affected-channel policy and ADR-0074 remain unaccepted.

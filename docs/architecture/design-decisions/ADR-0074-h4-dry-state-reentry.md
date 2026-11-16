@@ -144,3 +144,18 @@ fade bank. That is an additional explicit recovery-policy and verification
 limit, not an observed opposite-channel or Wet reset.
 
 The [actual integrated-main candidate replay](../../../worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) reproduces the scoped recovery, history and low-frequency observations on `230da0e2`. The affected-history, live-fade, exceptional allocation and native performance limits remain; this does not accept a policy or the ADR.
+
+## Live-fade collateral control — 2026-11-16
+
+The later [actual-main fallback experiment](../../../worklogs/h4-decision-checkpoint-0102/followup/fade-collateral-main230-results/README.md)
+observed 24/24 resets of otherwise valid state in the other live dry bank of
+the affected channel during deliberate source- or destination-bank faults.
+The valid-bank comparison used independently advanced copies, including after a
+previous recovery. Checked Wet, opposite-channel, raw and conditioned state was
+preserved. No allocations were observed in those selected 24 recovery calls
+with live allocation guards; this is not an exhaustive real-time or deadline
+result. Fault injection does not establish natural reachability. The fallback
+does not yet meet a demonstrated same-channel preservation policy, and its
+affected output and aligned history still differ from a clean trajectory.
+Continue targeted recovery-policy investigation, or retain/defer the limitation;
+**status remains Proposed and production H4 remains unchanged.**
