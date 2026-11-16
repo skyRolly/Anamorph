@@ -1,0 +1,42 @@
+5b4b3830d3f84b097fcfcd7bd078306fe6f94262
+100644 96eb79def6f7e1f486475695fa84597ec979df6c 1	CHANGELOG.md
+100644 796254aa45958e14bbc7ca9c7ff3c39c218fc69f 2	CHANGELOG.md
+100644 6725257a6e9a8773dacea811c3791329415de481 3	CHANGELOG.md
+100644 1eeb9a738638d9792bcc9d48f009ca7b9707dadb 1	docs/DOCUMENTATION_COVERAGE.md
+100644 5a5513ab32cc89a3dc5f72682e37620b47edd3b7 2	docs/DOCUMENTATION_COVERAGE.md
+100644 108c2a1dc4be92145c4f53223e498a20272571ec 3	docs/DOCUMENTATION_COVERAGE.md
+100644 4cfbba9b1f3e8976a580c492cbfbfa9bf4358ebc 1	docs/KNOWN_ISSUES.md
+100644 55a5c1baf804986e981b73a1f4e78adf27658c6e 2	docs/KNOWN_ISSUES.md
+100644 669ffb8806bf680aa11151e7d0ca664471119146 3	docs/KNOWN_ISSUES.md
+100644 118f6811c3f1d57d16e963e46fa0e9d69fa8f553 1	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 26c7dbd7dd35ea0a15fb96cace339a9d9dcf3139 2	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 75b93d21fba6fedafac12b3047b9c5c5ae390ccc 3	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 0bb864375eb2df1bb9edef67ce66db983037083d 1	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 446ea67fa3f8d3fa1caa447499948b97d7193dc1 2	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 071a8953513bc0a208e8581859b105145677980f 3	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 73d9243b53da212eeeed5dd74cb07cf496bdef10 1	docs/architecture/SIGNAL_FLOW.md
+100644 1c9951273bab541733c26ca2f90a2bd9977186ec 2	docs/architecture/SIGNAL_FLOW.md
+100644 153a827ffe795f6a2526a3df2203523bddc337a7 3	docs/architecture/SIGNAL_FLOW.md
+100644 77cff8b9f4136efb670f3857097c00d339c660d5 1	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+100644 fcedc4f60a406d8913e18a7edb2ce55a5bfe26d4 2	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+100644 de31d54060e3a459e1225e2a413aa61d6627f2f6 3	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+
+Auto-merging CHANGELOG.md
+CONFLICT (content): Merge conflict in CHANGELOG.md
+Auto-merging docs/DOCUMENTATION_COVERAGE.md
+CONFLICT (content): Merge conflict in docs/DOCUMENTATION_COVERAGE.md
+Auto-merging docs/KNOWN_ISSUES.md
+CONFLICT (content): Merge conflict in docs/KNOWN_ISSUES.md
+Auto-merging docs/SOURCE_OF_TRUTH.md
+Auto-merging docs/architecture/DSP_ALGORITHMS.md
+Auto-merging docs/architecture/DSP_GRAPH_REFERENCE.md
+CONFLICT (content): Merge conflict in docs/architecture/DSP_GRAPH_REFERENCE.md
+Auto-merging docs/architecture/REALTIME_SAFETY_AUDIT.md
+CONFLICT (content): Merge conflict in docs/architecture/REALTIME_SAFETY_AUDIT.md
+Auto-merging docs/architecture/SIGNAL_FLOW.md
+CONFLICT (content): Merge conflict in docs/architecture/SIGNAL_FLOW.md
+Auto-merging docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+CONFLICT (content): Merge conflict in docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+Auto-merging docs/procedures/TESTING.md
+Auto-merging src/dsp/AnamorphEngine.cpp
+Auto-merging tests/dsp_tests.cpp

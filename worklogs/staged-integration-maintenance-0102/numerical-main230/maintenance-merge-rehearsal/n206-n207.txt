@@ -1,0 +1,67 @@
+545276f631e277d1dc575f1c43a35bf219dc140d
+100644 96eb79def6f7e1f486475695fa84597ec979df6c 1	CHANGELOG.md
+100644 564b2469caa1c64c67163ae2f26a5e1e0f38deb9 2	CHANGELOG.md
+100644 6725257a6e9a8773dacea811c3791329415de481 3	CHANGELOG.md
+100644 1eeb9a738638d9792bcc9d48f009ca7b9707dadb 1	docs/DOCUMENTATION_COVERAGE.md
+100644 9d2d057a95daaf7aa65c114ae5bef553f76de31c 2	docs/DOCUMENTATION_COVERAGE.md
+100644 108c2a1dc4be92145c4f53223e498a20272571ec 3	docs/DOCUMENTATION_COVERAGE.md
+100644 d306527a8cb0bdd7b1c620e5508fcc2fb8319bed 1	docs/FUTURE_RISKS.md
+100644 c137460e6aa6a609dc709683846e155086097d10 2	docs/FUTURE_RISKS.md
+100644 5c5ee18507420e101142c062b885839b5dc51f77 3	docs/FUTURE_RISKS.md
+100644 dd5b0d72b202e2d7d49decd7153a678dfcce15b7 1	docs/POSTMORTEMS.md
+100644 447d64828e49c2c567b3ea16900fce3841953af3 2	docs/POSTMORTEMS.md
+100644 9bf3877a12ed901c76a7b84a815b2af9f05637b2 3	docs/POSTMORTEMS.md
+100644 118f6811c3f1d57d16e963e46fa0e9d69fa8f553 1	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 cb6a1107154347ed3510d57b641afb57a394d08d 2	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 75b93d21fba6fedafac12b3047b9c5c5ae390ccc 3	docs/architecture/DSP_GRAPH_REFERENCE.md
+100644 0bb864375eb2df1bb9edef67ce66db983037083d 1	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 0e800fd58df15a110e41824a62e460b8795dcd9f 2	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 071a8953513bc0a208e8581859b105145677980f 3	docs/architecture/REALTIME_SAFETY_AUDIT.md
+100644 73d9243b53da212eeeed5dd74cb07cf496bdef10 1	docs/architecture/SIGNAL_FLOW.md
+100644 18753ba14865d7fb0b49ca22614f8afd1b8bbc74 2	docs/architecture/SIGNAL_FLOW.md
+100644 153a827ffe795f6a2526a3df2203523bddc337a7 3	docs/architecture/SIGNAL_FLOW.md
+100644 79ffacb71850e02f79ad03077855451e57204b51 1	docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md
+100644 6dbea11d71a809355109fadd7c3c08ffa9af8a63 2	docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md
+100644 b3dce804dfda807a285a76ff934a0192eb712741 3	docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md
+100644 a1e53177157d6071c69c92a804cfd0993212cd2b 1	docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md
+100644 5d1cc24f0f00408c6be3c94089ae2d1948acabb4 2	docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md
+100644 f2acc28811491da84f6e75fc0353541b3d619f15 3	docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md
+100644 77cff8b9f4136efb670f3857097c00d339c660d5 1	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+100644 e15d31300d7a5f136998e23134897f292fc9ff3e 2	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+100644 de31d54060e3a459e1225e2a413aa61d6627f2f6 3	docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+100755 21ae595537c0f3d57e7139fbddcc8ed16258ebc9 1	scripts/check-citations.py
+100755 72e383aa74ed27a6673b760dba43f29bedc9a863 2	scripts/check-citations.py
+100755 170ac299c1218e79a7ccb72fda2009506b055404 3	scripts/check-citations.py
+100644 5bf953c95a6a72ab7bbaf13b3eeba9585e99ceb0 1	tests/dsp_tests.cpp
+100644 457527056e88e65dc916f82071b0ad1e174b75a1 2	tests/dsp_tests.cpp
+100644 30468c08443ba1abc85a39bd5a44e2ac788893f7 3	tests/dsp_tests.cpp
+
+Auto-merging CHANGELOG.md
+CONFLICT (content): Merge conflict in CHANGELOG.md
+Auto-merging docs/DOCUMENTATION_COVERAGE.md
+CONFLICT (content): Merge conflict in docs/DOCUMENTATION_COVERAGE.md
+Auto-merging docs/FUTURE_RISKS.md
+CONFLICT (content): Merge conflict in docs/FUTURE_RISKS.md
+Auto-merging docs/KNOWN_ISSUES.md
+Auto-merging docs/POSTMORTEMS.md
+CONFLICT (content): Merge conflict in docs/POSTMORTEMS.md
+Auto-merging docs/architecture/DSP_ALGORITHMS.md
+Auto-merging docs/architecture/DSP_GRAPH_REFERENCE.md
+CONFLICT (content): Merge conflict in docs/architecture/DSP_GRAPH_REFERENCE.md
+Auto-merging docs/architecture/REALTIME_SAFETY_AUDIT.md
+CONFLICT (content): Merge conflict in docs/architecture/REALTIME_SAFETY_AUDIT.md
+Auto-merging docs/architecture/SIGNAL_FLOW.md
+CONFLICT (content): Merge conflict in docs/architecture/SIGNAL_FLOW.md
+Auto-merging docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md
+Auto-merging docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md
+CONFLICT (content): Merge conflict in docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md
+Auto-merging docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md
+CONFLICT (content): Merge conflict in docs/architecture/design-decisions/ADR-0007-levelmatch-measure-predict.md
+Auto-merging docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+CONFLICT (content): Merge conflict in docs/architecture/design-decisions/ADR-0009-nan-selfheal-nyquist-clamp.md
+Auto-merging docs/procedures/TESTING.md
+Auto-merging scripts/check-citations.py
+CONFLICT (content): Merge conflict in scripts/check-citations.py
+Auto-merging src/dsp/AnamorphEngine.cpp
+Auto-merging tests/dsp_tests.cpp
+CONFLICT (content): Merge conflict in tests/dsp_tests.cpp
