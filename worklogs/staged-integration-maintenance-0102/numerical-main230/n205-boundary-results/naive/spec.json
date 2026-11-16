@@ -1,0 +1,30 @@
+{
+  "purpose": "N2-05 injected wet-state boundary; naive Mix=0 selection is a diagnostic, not a proposed recovery policy.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "267343897cebb85cae34f33998617ca966f0208b",
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-wet-state-boundary.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-naive-dry.patch",
+    "sha256": "278e25651c06465e20ad49d11e6a8b907a32eb1f1ed455c3cb0dfff67e11009f",
+    "purpose": "Restore only the Mix=0 dry output while allowing invalid wet state to pass without triggering final recovery."
+  }
+}

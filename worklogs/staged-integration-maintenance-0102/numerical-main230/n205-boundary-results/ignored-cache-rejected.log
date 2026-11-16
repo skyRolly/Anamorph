@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 99, in main
+    commands = verify_build()
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 69, in verify_build
+    if verify_source_tree(checkout, receipt['source_head']) != base_tree:
+       ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/replay_provenance.py", line 71, in verify_source_tree
+    raise ValueError(f'ignored input in {path}; keep builds and outputs outside the checkout')
+ValueError: ignored input in /workspace/numerical-main230-independent; keep builds and outputs outside the checkout
