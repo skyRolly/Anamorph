@@ -1,0 +1,14 @@
+{
+  "purpose": "Fresh PR #245 Drive endpoint exact-head build and full DSP/State validation.",
+  "source_head": "f78b53208623fbd7702194e41bd931d708a837fa",
+  "source_tree": "e42206512fbf54a7c354afc8fbf1f22962d72cd6",
+  "targets": ["AnamorphTests", "AnamorphStateTests"],
+  "probes": [],
+  "runs": [
+    {"program":"AnamorphTests","args":["--drive-endpoint"],"expected_exit":0,"stdout_contains":["13 checks, 0 failures","held_path=1"]},
+    {"program":"AnamorphTests","args":["--multiband-endpoints"],"expected_exit":0,"stdout_contains":["392 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--n2-controls"],"expected_exit":0,"stdout_contains":["720 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":[],"expected_exit":0,"stdout_contains":["5627 checks, 0 failures","ALL TESTS PASSED"]},
+    {"program":"AnamorphStateTests","prefix":["xvfb-run","-a"],"args":[],"expected_exit":0,"stdout_contains":["16555 checks, 0 failure(s)"]}
+  ]
+}
