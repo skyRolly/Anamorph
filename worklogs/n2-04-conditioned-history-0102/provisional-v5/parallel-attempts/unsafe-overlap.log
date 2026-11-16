@@ -1,0 +1,12 @@
+/workspace/n204-retain-control/src/dsp/AnamorphEngine.cpp: In member function ‘juce::dsp::Oversampling<float>* anamorph::AnamorphEngine::currentOversampler()’:
+/workspace/n204-retain-control/src/dsp/AnamorphEngine.cpp:1095:12: warning: enumeration value ‘Off’ not handled in switch [-Wswitch-enum]
+ 1095 |     switch (p.oversample)
+      |            ^
+/workspace/n204-retain-control/src/dsp/AnamorphEngine.cpp: In member function ‘void anamorph::AnamorphEngine::process(juce::AudioBuffer<float>&)’:
+/workspace/n204-retain-control/src/dsp/AnamorphEngine.cpp:2313:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+ 2313 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |         ^~
+/workspace/n204-retain-control/src/dsp/AnamorphEngine.cpp:2313:32: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+ 2313 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |                                ^~
+run 0 exit 1 expected 1
