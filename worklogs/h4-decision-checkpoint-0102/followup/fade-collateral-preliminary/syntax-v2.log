@@ -1,0 +1,7 @@
+/workspace/anamorph-h4-followup/worklogs/h4-decision-checkpoint-0102/followup/h4-fade-collateral-probe.cpp: In function ‘int main(int, char**)’:
+/workspace/anamorph-h4-followup/worklogs/h4-decision-checkpoint-0102/followup/h4-fade-collateral-probe.cpp:101:56: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+  101 |             check((fb[injected].dx[0].*member(S1{}))[0]==0.0f,"injected channel state reset");
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~
+/workspace/anamorph-h4-followup/worklogs/h4-decision-checkpoint-0102/followup/h4-fade-collateral-probe.cpp:104:70: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+  104 |                                    &&(expectedOther.*member(S1{}))[0]!=0.0f;
+      |                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~

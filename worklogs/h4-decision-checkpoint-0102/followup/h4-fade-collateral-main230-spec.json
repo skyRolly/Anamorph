@@ -1,0 +1,26 @@
+{
+  "purpose": "Nonshipping conditioned-fallback experiment on actual integrated main: inject dry state twice in a live source or destination crossover fade bank; compare the other bank with its independently advanced copied state, selected unrelated state, actual wrapped latency, and observed exceptional-path allocations. Injection is not a natural-reachability claim.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "5b8c733bfe8e16f0c8e52eed096341451e058867",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-conditioned-fallback-70bb.patch",
+    "sha256": "40cb9e404b0556adc7793b974755b7b90144d654310dfd2a31e35c40b95c8474",
+    "purpose": "Apply the previously reviewed nonshipping consumption-aware candidate with an experimental affected-channel conditioned-dry fallback and test-only policy switch to actual integrated main."
+  },
+  "targets": ["AnamorphTests"],
+  "probes": [
+    {
+      "name": "fade-collateral-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-fade-collateral-probe.cpp",
+      "support": ["tests/AllocationGuard.h"]
+    }
+  ],
+  "runs": [
+    {"program":"fade-collateral-probe","args":["positive"],"expected_exit":0,"stdout_contains":["lanes=12 injected_recoveries=24 valid_other_bank_resets=24","0 failures"]},
+    {"program":"fade-collateral-probe","args":["claim-preserved"],"expected_exit":1,"stdout_contains":["FAIL negative claim that valid live dry bank is preserved"]},
+    {"program":"fade-collateral-probe","args":["no-fallback"],"expected_exit":1,"stdout_contains":["FAIL fault block publishes conditioned fallback"]}
+  ]
+}
