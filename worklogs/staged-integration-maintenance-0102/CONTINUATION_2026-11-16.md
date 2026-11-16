@@ -135,3 +135,22 @@ failure to a particular cause or treat a successful retry as its original
 log. When the run completes, rerun the failed job on the same exact source,
 retain both attempts and investigate any accessible evidence. Final-main
 validation is not yet complete.
+
+## Exact-head N2-04 replay and mutations
+
+The fresh Linux/Ninja replay of PR #243 head `6a65b1d1` has completed:
+125 focused checks, 5739 DSP checks and 16555 State checks passed. Its
+receipt and raw results are committed on `codex/0102-n2-04-research` at
+`facafb27ff02cec560c01417189f3b620c147901`. Three subsequent receipt-controlled
+relinks ran serially: positive 125/0, original-clear mutation 28/125 failures,
+and unsafe-retention mutation 6/125 failures, each with its expected process
+exit. Their receipts and raw results are committed at `1091fbd8`. The earlier
+overlapping v5 attempts remain documented separately. Hosted exact-head checks
+and the PR's independent owner review remain separate.
+
+The fresh integrated-main numerical replay at `31bf22e2` reproduced the
+selected N2-05, N2-06 and N2-07 witnesses. The N2-06 ordinary finite-input
+comparison is deliberately cancellation-sensitive, not a claim of incidence
+or audibility. A nonshipping finite-operand endpoint candidate and its
+independent smoother, interior and self-heal controls are specified at
+`e2ea2fd8`; their specification is not a passing result or a production PR.
