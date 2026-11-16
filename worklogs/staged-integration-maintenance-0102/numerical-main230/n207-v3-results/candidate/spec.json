@@ -1,0 +1,31 @@
+{
+  "purpose": "N2-07 candidate actual-engine isolated control; injected OS fade is a boundary test, not natural reachability. Terminal samples use the established extreme cancellation witness after the recorded v2 discrimination failure.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "51e6aa86679c9368433fdb172915bfa788a8de90",
+  "probes": [
+    {
+      "name": "n207-v2-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-candidate-probe-v3.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n207-v2-probe",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "13 checks, 0 failures",
+        "interior_output_hash=",
+        "held_path=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-finite-endpoint.patch",
+    "sha256": "5f301ec52011b217ae0ab42e4a8412dd6313d6d03b4b7300d64574e23490342d",
+    "purpose": "N2-07 candidate engine-only candidate or targeted mutation."
+  }
+}
