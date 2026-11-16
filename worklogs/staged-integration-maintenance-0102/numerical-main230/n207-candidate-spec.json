@@ -1,0 +1,8 @@
+{
+  "purpose": "Nonshipping N2-07 finite Drive endpoint candidate on integrated main: actual H4-isolated extreme witness, Drive smoother clocks, invalid-input recovery, actual x4 wrap, and non-endpoint output hash.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "51e6aa86679c9368433fdb172915bfa788a8de90",
+  "patch": {"commit":"spec","path":"worklogs/staged-integration-maintenance-0102/numerical-main230/n207-finite-endpoint.patch","sha256":"5f301ec52011b217ae0ab42e4a8412dd6313d6d03b4b7300d64574e23490342d","purpose":"Select finite saturation at exact Drive blend one in the settled, unwrapped-ramp and held-envelope paths; preserve original arithmetic for all other coefficients and invalid operands."},
+  "probes": [{"name":"n207-probe","target":"AnamorphTests","commit":"spec","path":"worklogs/staged-integration-maintenance-0102/numerical-main230/n207-candidate-probe.cpp"}],
+  "runs": [{"program":"n207-probe","args":[],"expected_exit":0,"stdout_contains":["interior_output_hash=","wrapped output=","8 checks, 0 failures"]}]
+}
