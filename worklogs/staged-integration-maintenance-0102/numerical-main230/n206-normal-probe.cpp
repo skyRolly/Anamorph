@@ -25,12 +25,12 @@ int main() {
     int modelMismatch=0, differences=0, samples=0;
     double maxDifference=0.0;
     for(int b=0;b<blocks;++b) {
-        float inputL[block],inputR[block],wet[block],legacyL[block],legacyR[block];
+        float wet[block],legacyL[block],legacyR[block];
         for(int i=0;i<block;++i) {
             const float l=next(), perturb=std::ldexp(next(),-((b+i)%18));
             const float r=-l+perturb;
             const float mid=(l+r)*0.5f;
-            inputL[i]=l;inputR[i]=r;wet[i]=mid;
+            wet[i]=mid;
             legacyL[i]=l+1.0f*(mid-l);legacyR[i]=r+1.0f*(mid-r);
             audio.setSample(0,i,l);audio.setSample(1,i,r);
         }
