@@ -27,6 +27,6 @@ fix or accepted recovery policy. It does not establish behavior for wrapped
 latency, all state families, Match, channel-local preservation, repeated faults,
 reset/re-prepare, all finite-difference overflows or other endpoints. The
 additional detection boundary requires assessment under the signal-flow
-Architecture Review Gate and ADR-0009 before shipping. A separate replay of
-the original finite-input witness has been specified; its launch is not a
-result. No production or H4 correction is included.
+Architecture Review Gate and ADR-0009 before shipping. A separate [replay of the original finite-input witness](../n205-flagged-natural-results/README.md)
+returned 128/128 exact Dry samples on the selected extreme input, versus 0/128
+on main; it did not directly inspect the prior invalid stage or the flag. No production or H4 correction is included.
