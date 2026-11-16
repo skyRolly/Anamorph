@@ -39,3 +39,12 @@ specific generated cache was removed, and both valid runs used fresh output
 directories. The guard was not weakened. A production design that adds or moves
 a non-finite detector must be assessed against the signal-flow Architecture
 Review Gate and ADR-0009; no such change is made here.
+
+Alternatives for subsequent work are: (1) retain/defer the current behavior;
+(2) carry an explicit invalid-Wet indication from the Mix boundary to the
+existing final reset while selecting valid Dry, which changes detection scope
+and needs the Architecture Review Gate assessment plus tests of measurement,
+other channels and later blocks; or (3) skip Wet computation at Mix=0, which
+would also change Wet state continuity and measurement behavior and therefore
+is not justified by this witness. The naive selection alone is rejected by the
+experiment above. None is selected as an approved production recovery contract.
