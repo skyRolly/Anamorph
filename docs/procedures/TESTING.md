@@ -7895,3 +7895,5 @@ wrap exercise the latency and smoother premises separately. The existing
 `--multiband-endpoints` oracle models the corrected Mix=1 boundary while still
 checking actual Match-on and Match-off Enable output. It does not independently
 verify the complete Level-Match algorithm. Existing Test 25 is unchanged.
+The test's private-state access uses explicitly typed friend declarations so
+the same regression compiles under MSVC as well as GCC and Clang.

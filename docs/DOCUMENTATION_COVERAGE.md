@@ -19451,3 +19451,6 @@ algorithm and graph descriptions, ADR-0005 implementation note, current issue
 status and Unreleased changelog describe the same scoped endpoint behavior.
 Interior arithmetic, invalid-operand self-heal, H4 behavior and Test 25 remain
 separate. Historical audit files and measurements are unchanged.
+An initial hosted MSVC build exposed an undeduced friend-return test-helper
+error; the regression now uses the existing explicitly typed access pattern.
+The failed attempt remains recorded separately from new-head validation.

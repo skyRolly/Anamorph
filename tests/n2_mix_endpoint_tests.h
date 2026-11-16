@@ -6,11 +6,13 @@
 namespace n2_mix_endpoint_tests
 {
 using Engine = anamorph::AnamorphEngine;
-struct Mix { friend auto member(Mix); };
-struct Dry { friend auto member(Dry); };
-struct Write { friend auto member(Write); };
-struct OS { friend auto member(OS); };
-template<class T, auto P> struct Access { friend auto member(T) { return P; } };
+// Explicit return types match the portable access helper in the existing
+// Multiband endpoint regression (MSVC cannot use an undeduced friend `auto`).
+struct Mix { using type = juce::SmoothedValue<float> Engine::*; friend type member(Mix); };
+struct Dry { using type = juce::AudioBuffer<float> Engine::*; friend type member(Dry); };
+struct Write { using type = int Engine::*; friend type member(Write); };
+struct OS { using type = bool Engine::*; friend type member(OS); };
+template<class Tag, typename Tag::type Ptr> struct Access { friend typename Tag::type member(Tag) { return Ptr; } };
 template struct Access<Mix, &Engine::mixSmooth>;
 template struct Access<Dry, &Engine::dryDelayBuffer>;
 template struct Access<Write, &Engine::dryDelayWrite>;
