@@ -1,0 +1,20 @@
+{
+  "purpose": "Nonshipping bank-local H4 recovery candidate on actual integrated main: retain independently valid other-bank state during deliberately injected live-fade faults, exercise repeated recovery, selected unrelated state and allocation liveness. This does not establish natural reachability or a complete recovery policy.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "397000f323940a7fae0336561d672a860edcbe8c",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-bank-local-main230.patch",
+    "sha256": "fd0d2623db8b133576662041d67ed67ebaebdc7ce794605566adb1dee997785d",
+    "purpose": "Extend the nonshipping conditioned-dry fallback to reset only processed dry banks whose recursive state is observed invalid; ambiguous output-only faults still reset both banks."
+  },
+  "targets": ["AnamorphTests"],
+  "probes": [
+    {"name":"bank-local-probe","target":"AnamorphTests","commit":"spec","path":"worklogs/h4-decision-checkpoint-0102/followup/h4-bank-local-probe.cpp","support":["tests/AllocationGuard.h"]}
+  ],
+  "runs": [
+    {"program":"bank-local-probe","args":["positive"],"expected_exit":0,"stdout_contains":["lanes=12 injected_recoveries=24 valid_other_bank_preserved=24","277 checks, 0 failures"]},
+    {"program":"bank-local-probe","args":["claim-reset"],"expected_exit":1,"stdout_contains":["FAIL negative claim that valid live dry bank was reset"]},
+    {"program":"bank-local-probe","args":["no-fallback"],"expected_exit":1,"stdout_contains":["FAIL fault block publishes conditioned fallback"]}
+  ]
+}
