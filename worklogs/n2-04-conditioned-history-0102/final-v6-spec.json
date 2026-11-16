@@ -1,0 +1,44 @@
+{
+  "purpose": "Fresh exact-head N2-04 PR v6 replay: repeated-recovery selector plus full DSP and State suites on actual integrated-main base.",
+  "source_head": "6a65b1d18a992c738b3f004f7690ea87d510bd40",
+  "source_tree": "380f1a039eeb9deb1f1c7c28736a0c726dde30fa",
+  "targets": [
+    "AnamorphTests",
+    "AnamorphStateTests"
+  ],
+  "probes": [],
+  "runs": [
+    {
+      "program": "AnamorphTests",
+      "args": [
+        "--n204-conditioned-history"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "actual wrapped algorithm",
+        "125 checks, 0 failures"
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "5739 checks, 0 failures",
+        "ALL TESTS PASSED"
+      ]
+    },
+    {
+      "program": "AnamorphStateTests",
+      "prefix": [
+        "xvfb-run",
+        "-a"
+      ],
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "16555 checks, 0 failure(s)"
+      ]
+    }
+  ]
+}
