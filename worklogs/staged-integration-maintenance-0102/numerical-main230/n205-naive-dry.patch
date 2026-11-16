@@ -1,0 +1,26 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index acd809e2..047492ed 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2072,8 +2072,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+                 dryL = cleanL + ts * (alignL - cleanL);
+                 dryR = cleanR + ts * (alignR - cleanR);
+             }
+-            L[i] = dryL + m * (L[i] - dryL);
+-            R[i] = dryR + m * (R[i] - dryR);
++            L[i] = juce::exactlyEqual (m, 0.0f) ? dryL : dryL + m * (L[i] - dryL);
++            R[i] = juce::exactlyEqual (m, 0.0f) ? dryR : dryR + m * (R[i] - dryR);
+         }
+     }
+     else
+@@ -2109,8 +2109,8 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+             dryL = cleanL + ts * (alignL - cleanL);
+             dryR = cleanR + ts * (alignR - cleanR);
+         }
+-        L[i] = dryL + m * (L[i] - dryL);
+-        R[i] = dryR + m * (R[i] - dryR);
++        L[i] = juce::exactlyEqual (m, 0.0f) ? dryL : dryL + m * (L[i] - dryL);
++        R[i] = juce::exactlyEqual (m, 0.0f) ? dryR : dryR + m * (R[i] - dryR);
+     }
+ 
+     // ======================== MONO MAKER (post-Mix) =========================
