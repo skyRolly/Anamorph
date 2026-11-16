@@ -1,0 +1,12 @@
+{
+  "sha": "91db6b0eca57f375472a6f429f309bd67c8c727e",
+  "juce_sha": "d60b7a78030661574a615b586d9325ba7a7fa7dd",
+  "binaries": {
+    "AnamorphTests": {
+      "sha256": "d2870eb8e2ac41168d5c51e259577ebe44e2099848617a94812cbbd09c63f857"
+    },
+    "AnamorphStateTests": {
+      "sha256": "32c1c1bacfbe3d426bfbd98fd1e7ab41f7a8bca4ea1139149e43960ff641d9e4"
+    }
+  }
+}

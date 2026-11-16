@@ -1,0 +1,938 @@
+[
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      2,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 18832554,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-2-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "2",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      2,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21660844,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-2-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "2",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      2,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21561002,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-2-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "2",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 18985109,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21815959,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      2,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 21716117,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-2-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "2",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      3,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 23457312,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-3-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "3",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      3,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 29828130,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-3-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "3",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      3,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 29728288,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-3-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "3",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      3,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 23609843,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-3-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "3",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      3,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 29983221,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-3-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "3",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      3,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 29883379,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-3-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "3",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 27229133,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37207759,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37107917,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 27381692,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37362878,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 37263036,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      192000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 7507974,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-192000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "192000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      192000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10015500,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-192000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "192000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      192000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 9989382,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-192000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "192000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 7623056,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10133142,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      192000,
+      32,
+      4,
+      1,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10107024,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-192000-32-4-1-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "192000",
+      "32",
+      "4",
+      "1",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 7508405,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 10015931,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      32,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 9989813,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-32-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "32",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      192000,
+      256,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 53586051,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-192000-256-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "192000",
+      "256",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      192000,
+      256,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 73526148,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-192000-256-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "192000",
+      "256",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      192000,
+      256,
+      4,
+      0,
+      0,
+      1
+    ],
+    "exit": 0,
+    "instructions": 73328003,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-192000-256-4-0-0-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "192000",
+      "256",
+      "4",
+      "0",
+      "0",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      1,
+      1
+    ],
+    "exit": 0,
+    "instructions": 66735356,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-4-0-1-1.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "1",
+      "1"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      1,
+      1
+    ],
+    "exit": 0,
+    "instructions": 76713485,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-4-0-1-1.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "1",
+      "1"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      1,
+      1
+    ],
+    "exit": 0,
+    "instructions": 76780540,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-4-0-1-1.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "1",
+      "1"
+    ]
+  },
+  {
+    "variant": "baseline",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      0.5
+    ],
+    "exit": 0,
+    "instructions": 37732303,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/baseline-48000-128-4-0-0-0.5.callgrind",
+      "/workspace/n2-execution/h4-count-baseline/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "0.5"
+    ]
+  },
+  {
+    "variant": "warm",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      0.5
+    ],
+    "exit": 0,
+    "instructions": 37734863,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/warm-48000-128-4-0-0-0.5.callgrind",
+      "/workspace/n2-execution/h4-count-warm/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "0.5"
+    ]
+  },
+  {
+    "variant": "state",
+    "config": [
+      48000,
+      128,
+      4,
+      0,
+      0,
+      0.5
+    ],
+    "exit": 0,
+    "instructions": 37800399,
+    "command": [
+      "valgrind",
+      "--tool=callgrind",
+      "--collect-atstart=no",
+      "--callgrind-out-file=/workspace/n2-execution/h4-counts/state-48000-128-4-0-0-0.5.callgrind",
+      "/workspace/n2-execution/h4-count-state/probe",
+      "48000",
+      "128",
+      "4",
+      "0",
+      "0",
+      "0.5"
+    ]
+  }
+]

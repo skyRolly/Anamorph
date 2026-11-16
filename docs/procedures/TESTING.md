@@ -840,8 +840,8 @@ round-trip (bit-exact), transparent default, true-bypass null + latency match, M
 (unity/no-ratchet/silence-freeze/mix-coupling/multiband-unity), crossover automation safety,
 NaN recovery, four click-free crossfade tests (transitions, bypass, multiband enable,
 solo+multiband-enable), the dry-align gate comb regression (`testDryAlignGateRecomb`,
-Wave 2 / H4: a Mix dip after a gated full-wet stretch must re-engage the dry bank
-phase-matched — the KI-#1 metric), the split-movement regression
+Wave 2 / H4: aggregate mono RMS through a Mix dip after a gated full-wet stretch;
+this default-crossover noise case does not establish worst-frequency/sample-level reconstruction), the split-movement regression
 (`testMultibandSplitDragNoPitchShift`, Test 29): the worst 100 ms pitch chunk of a 150 Hz tone
 must stay < 18 cents (the accepted controlled-FM bound of the R(f) = 4·max(1, f/300) oct/s
 slew-limited smoother, ADR-0015 final + slow-drag fix) through drags and the whole catch-up —
@@ -7768,6 +7768,28 @@ No repeat acceptance is requested. Source-bound automated CI remains independent
 
 Post-B2 combined-source verification at `6dcf93f0`: Linux GCC14 executes 945 DSP / 16,074 State checks, including all 166 B2 lifecycle observations and the unchanged State isolation controls. The actual fuzz entry passes repeated/concurrent/EOF/ownership/failure controls with five calls per positive process in the local direct driver. This is not libFuzzer or sanitizer execution. [Separate combined record](../../worklogs/engineering-review/post-b2-isolation-combined.json) retains binaries, source hashes, commands and raw streams; final-head real fuzz/platform/sanitizer CI remains separate.
 
+## H4 claim boundary (N2-01 / V2-01)
+
+Test 25 retains both original RMS assertions and its default noise/crossover configuration. It does not establish worst-frequency/sample-level phase reconstruction. The [optional low-frequency oracle and recovery/cost probes](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) are nonshipping evidence; the oracle intentionally fails current H4. Integrate it into mandatory CI with an approved production correction, not before.
+
+## H4 extreme-input diagnostic follow-up (2026-11-14)
+
+The nonshipping `worklogs/h4-review-followup-0102/engine_cause.cpp` records wet
+and dry crossover-state observations and applies separately selected state-family
+reset controls after the recorded extreme-input stimulus. Its accompanying
+committed specification identifies the historical combined production source.
+The corrected execution and instrumented stage trace identify Multiband as the
+first observed invalid output stage in this stimulus, followed by existing
+self-heal. See the follow-up worklog for the fresh-build receipt,
+independent resets and the superseded preliminary observer. This is a
+nonshipping causal probe, not a mandatory regression or H4 fix.
+
+The later copied-state LR4 control localizes N2-08 to an extreme-finite wet
+numerator overflow and compares one diagnostic widened step. An active-Velvet
+reset does not prevent the observed block; the earlier Haas reset was inactive.
+The arithmetic control is scoped to the recorded first sample and does not
+validate a production correction or the complete subsequent tail.
+
 DSP Test 77 and State Test 159 (`--n2-controls`) discriminate independently crossfaded Bypass/Multiband Enable adoption from ordinary and forced ducks. They assert next-block targets and smoother progression in addition to readback and audible differences. See `worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md`.
 
 ## Multiband Enable stage endpoints (N2-03, Test 23 extension)
@@ -7832,8 +7854,32 @@ requires a fresh receipt with the generated-input manifest. Actual Anamorph
 relink and isolated mutation controls are separate product evidence, and an
 exit-only run is not an oracle or proof of undeclared side artifacts.
 
+
 ## Retired review relinkers (2026-11-14)
 
 The old N2-02 relinker is intentionally disabled before any output is created; normal and `python -O` invocations are checked in `worklogs/n2-controls-0102/retired-relinker-controls.json`. Current isolated N2-02 and forced-adoption mutations use the reviewed shared fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
 
 The old endpoint probe builder and mutation relinker are intentionally disabled before output creation. Normal and `python -O` rejection controls are recorded in `worklogs/n2-endpoints-0102/retired-relinker-controls.json`; use the shared reviewed endpoint mutations and fresh-build procedure in `worklogs/combined-isolated-controls-0102/README.md`.
+
+The three old H4 probe/recovery/endpoint relink entry points are intentionally disabled before output creation; normal and `python -O` rejection controls are recorded in `worklogs/h4-review-followup-0102/retired-relinker-controls.json`. Committed specifications and shared fresh-build or receipt-checked runners cover the stated follow-up witnesses; other historical experiments remain separately scoped and are not automatically reproducible.
+
+
+A new source-bound nonshipping H4 recovery repeat exercises four left-channel
+guard activations and compares the untouched right dry integrators with an
+independent reference. A reset-both mutation changes 4/4 right-state matches to
+0/4. The [decision packet](../../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md)
+links the inputs and limits. This does not establish complete A2 recovery or
+make the failing-on-main low-frequency oracle mandatory.
+
+## Nonshipping H4 consumption-aware checkpoint (2026-11-15)
+
+The [candidate checkpoint](../../worklogs/h4-decision-checkpoint-0102/README.md) records 40 scoped checks, actual fade-bank and wrapped-latency premises, and the still-unverified first-consumption/history contract. This is diagnostic evidence, not a new mandatory test, production correction, complete recovery claim, or performance result. Test 25 remains unchanged.
+
+A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a4a50f25a80a8bb57b2a92cf8fe16e4adb8/worklogs/h4-decision-checkpoint-0102/followup) records the expanded oracle, recovery controls and matched instruction artifacts; it does not establish complete exceptional recovery or native real-time performance.
+
+
+
+
+## H4 first-consumption and N2-09 follow-up (2026-11-15)
+
+The [nonshipping history trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observes actual aligned history writes and latency-offset Mix reads after injected invalid dry state. The [independent production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) establishes N2-09: an extreme finite input causes an interior Enable overflow, aligned-history write/read and self-heal. The 216-case [unpatched secondary search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) did not find the separate dry-source interpolation failure exposed by a diagnostic fallback; this is a bounded negative result. These do not establish a complete H4 policy or change Test 25.

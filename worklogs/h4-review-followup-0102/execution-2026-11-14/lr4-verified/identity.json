@@ -1,0 +1,39 @@
+{
+  "source_head": "113b9189f0ff4d3b6348c553c559c22ee8ade782",
+  "source_tree": "d42a36c79ae930c2cc4454bf77bfaf57aad80b44",
+  "packet_commit": "268aae0d6b21bdbe3c6a53af59e97aa8b26f1fc1",
+  "inputs_sha256": {
+    "worklogs/h4-review-followup-0102/lr4_hidden_state.cpp": "13f83c9e259b05e8a24c209877cd6e6a40dee24186519d990c4fd409850bc3cc",
+    "worklogs/h4-review-followup-0102/stub/juce_dsp/juce_dsp.h": "5605aae99fda09d808558d46dd6adff81ed32071eceecf1ea6b129914a1d0812"
+  },
+  "tool_sha256": {
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_lr4_witness.py": "5fd570eb69b48c2803079c20493e7c677d8ac2c15ff7b4a6aa47d4b0e4464541",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_provenance.py": "ce51b1a665349d025793ef35e1d144fd14b20f8499cb4196454553d7804a84da",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/rebuild_probe.py": "afe8f5445b03514e3821246a8ba0dd91ee56cc94b2f51780fcae978d6d356480",
+    "/workspace/anamorph-evidence/worklogs/dsp-numerical-audit-0102/replay_experiment.py": "9701aa5034ab6b528736376283d8de1790c5805dfaa07a9f2633d14187e48adb"
+  },
+  "compiler_version": "g++ (Debian 14.2.0-19) 14.2.0",
+  "compile": [
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "-ffp-contract=off",
+    "-I/workspace/review-closure-lr4-witness/packet/worklogs/h4-review-followup-0102/stub",
+    "-I/workspace/anamorph-review-baseline",
+    "/workspace/review-closure-lr4-witness/packet/worklogs/h4-review-followup-0102/lr4_hidden_state.cpp",
+    "-o",
+    "/workspace/review-closure-lr4-witness/lr4-witness"
+  ],
+  "binary_sha256": "5a5f4672fac1515cf5d1b83e3cb8b75fdfd7c2e69334596dc0f587b1e957a1cb",
+  "run": [
+    "/workspace/review-closure-lr4-witness/lr4-witness"
+  ],
+  "cwd": "/workspace/review-closure-lr4-witness",
+  "exit": 0,
+  "stdout_sha256": "f14acb51061390ebc42a8a3f583ece8f5aa0a7a6c3d433deb50c7cbf0f13e2ce",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "environment": {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  },
+  "dependency": "committed minimal JUCE MathConstants stub; not a JUCE production build"
+}

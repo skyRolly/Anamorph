@@ -19325,6 +19325,22 @@ no graph, thread, parameter, serialization, version or dependency change.
 
 The worklog archive retains all original reports, diagnostics, reproduction sources, commands and compressed raw evidence at SHA 113b9189. A manifest preserves byte identities; a portable helper rebuilds from fresh pinned-source objects. Repository map, SOURCE_OF_TRUTH and README link this supporting developer evidence. Original history and P3 findings remain intact; no production or acceptance change occurs.
 
+N2-01/V2-01: [the H4 decision packet](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md) maps the actual gate, independent low-frequency oracle, recovery and cost evidence to Proposed ADR-0074. Test 25 remains an aggregate RMS regression with unchanged assertion conditions; the new failing-on-main oracle remains nonshipping until an approved production correction.
+
+N2-02/N2-03 delivery and cross-finding validation are indexed in the [0.10.2 DSP delivery ledger](../worklogs/0102_DSP_DELIVERY_2026-11-13.md); per-PR records and immutable final source links distinguish independent corrections from H4 diagnostic candidates.
+
+## H4 extreme-input causal probe (2026-11-14)
+
+The documentation drift check found that the candidate-only hidden-state witness
+and the later zero-block observation must remain separate. The new nonshipping
+engine causal probe and its planned production-source specification are indexed
+in TESTING and the H4 follow-up worklog. They add state-family controls without
+changing shipping source or accepting ADR-0074. The later recorded trace locates
+the first observed invalid signal at Multiband and the following existing
+self-heal. The later copied-state control identifies a distinct extreme-finite wet
+LR4 numerator overflow (N2-08, P3 review assessment), now indexed in known
+issues and TESTING. Existing H4 findings and historical measurements remain.
+
 ## N2-02 ordinary-duck crossfade targets
 
 The existing ADR-0004 ownership contract now holds through ordinary fade-out/fade-in and interruption. DSP77/State159 check live adoption, exact smoother progression and audible controls, with forced-completion/bottom controls. State-coverage lint preserves the duck-deferred partition and rejects swallowed crossfaded requests. DSP algorithms/graph, testing inventory, map and Unreleased entry describe the bounded correction; H4 and N2-03 remain separate.
@@ -19356,6 +19372,20 @@ replacements and which remain open. Recorded a new full baseline and historical
 diagnostic replay, a fresh combined-source header-clamp control, and the separate
 committed-stub LR4 witness. Historical archived evidence remains unchanged.
 
+
+## H4 replay-entry and state-lifetime audit — 2026-11-14 UTC
+
+Retired the three unverified legacy relinkers; retained their historical command bodies and measurements. Recorded the separately rebuilt isolated LR4 witness and source-based bank, fade, coefficient and aligned-history lifetimes, including the unvalidated recovery boundaries. H4 shipping behavior and Proposed ADR status remain unchanged. Documentation drift was checked before editing; the stale live descriptions and their correction are recorded here.
+
+
+## H4 decision-package drift and recovery replay — 2026-11-14 UTC
+
+The drift check found that the dated roadmap still read as a current guarded
+candidate recommendation. It is now explicitly historical and the new follow-up
+records the hidden-state gap and N2-08. The decision packet, Proposed ADR-0074,
+follow-up worklog and TESTING also link the fresh source-bound repeated
+channel-recovery and reset-both control. They state its limited scope and the
+negative runner's unobserved outer status; original evidence remains unchanged.
 
 ## N2-02 replay-entry audit — 2026-11-14 UTC
 
@@ -19391,3 +19421,22 @@ and checks copied probe inputs. TESTING and CI_CD describe the synthetic
 source-lint gate and the separate need for actual product replay controls.
 Required declared side outputs and markers are recorded; an exit-only result
 is not a numerical oracle. Historical reports, logs and manifests remain intact.
+
+## H4 candidate checkpoint documentation audit (2026-11-15)
+
+Before editing, the current H4 packet, ADR-0074, README and TESTING were checked for drift: the README still said all work was unmerged after #242, and the ADR contained an earlier causal checkpoint preceding the separately identified N2-08 evidence. Scoped the former to the remaining DSP documentation/correction PRs and dated the latter. Added a nonshipping consumption-aware candidate record, explicitly limited positive controls and unresolved recovery/performance conditions; updated TESTING and the Proposed ADR. Archived historical measurements and reports remain unchanged.
+
+## Link later H4 evidence from dated checkpoint (2026-11-15)
+
+The initial candidate checkpoint, ADR, TESTING and coverage entries were reviewed before this update. The initial unmeasured-cost statement is now explicitly dated, and the later separate nonshipping recovery and instruction evidence is linked without treating it as an accepted architecture decision. Historical measurements and production source are unchanged.
+
+## H4 history and N2-09 staged integration audit — 2026-11-15
+
+The drift check found the stable checkpoint predating the first-consumption
+trace, matched candidate cost and the separate N2-09 production witness. The
+Proposed ADR, checkpoint, known issues, TESTING and indexes now link those
+separately committed, source-scoped results. The bounded secondary search is
+not a proof of unreachability. Original evidence and Test 25 remain intact.
+
+The H4 decision packet now points to the later policy checkpoint, and the dated
+November 13 delivery ledger explicitly labels its PR-state table historical.

@@ -1,0 +1,12 @@
+A2:
+after gated extreme dry=1.05003e+38 finite=1 wet=5.25017e+37 wetfinite=1 left_invalid=1 right_invalid=0
+dip left_zero=128 left_invalid_after=0 right_invalid_after=0 firstL=0 firstR=0
+
+A2 controls (same stimulus, output as reported by engine_controls.cpp):
+unmodified: left_zero=128 after Mix dip
+reset left dry state before Mix dip: left_zero=128
+keep Mix at 1 (no dip): left_zero=128
+
+Experimental state-scan candidate:
+after gated extreme dry=1.05003e+38 finite=1 wet=5.25017e+37 wetfinite=1 left_invalid=0 right_invalid=0
+dip left_zero=128 left_invalid_after=0 right_invalid_after=0 firstL=0 firstR=0
