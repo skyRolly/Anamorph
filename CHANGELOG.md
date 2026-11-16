@@ -25,6 +25,10 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **Drive retains its computed saturation at the exact fully blended endpoint.**
+  The existing interior blend, smoothing, non-finite recovery and oversampling
+  timing are preserved. Evidence: N2-07 actual-engine regression; ADR-0003.
+
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
   destinations still wait for the complete-state duck bottom.

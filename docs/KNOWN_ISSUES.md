@@ -10,8 +10,9 @@ N2-01 (P2) and V2-01 remain open on the investigated main: H4 skips recursive dr
 crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
-The original audit's N2-04–07 remain confirmed P3 findings on the reviewed
-production source and are tracked independently for maintenance; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
+The original audit's N2-04–06 remain confirmed P3 findings on this source
+and are tracked independently for maintenance. N2-07's Drive endpoint correction
+is described in ADR-0003. [Original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
 are retained. Open correction PRs do not establish integration on main.
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
@@ -207,7 +208,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1451 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1460 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
