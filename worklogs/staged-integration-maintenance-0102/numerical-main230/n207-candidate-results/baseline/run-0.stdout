@@ -1,0 +1,8 @@
+FAIL full-wet one-band Drive endpoint retains saturated output
+extreme input=0x1.7d784p+26 output=0x0p+0 independent_reference=1.03767666
+FAIL full-wet one-band Drive endpoint retains saturated output
+extreme input=-0x1.7d784p+26 output=0x0p+0 independent_reference=-1.03767666
+interior_output_hash=36e7661d70cc2a10
+FAIL actual x4 wrapped Drive retains saturated endpoint
+wrapped output=0x0p+0 latency=6 clock_bad=0
+8 checks, 3 failures
