@@ -1,0 +1,26 @@
+{
+  "purpose": "N2-05 injected wet-state boundary under actual x4 wrapping, baseline; compare independent N2-04 history behavior.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-wet-state-x4.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "wrapped=1",
+        "latency=6"
+      ]
+    }
+  ]
+}
