@@ -170,3 +170,13 @@ The selected fault injection is not natural-reachability evidence. A fuller
 recovery oracle, proposed exceptional-output policy and representative native
 cost evidence are needed before selecting a production candidate. **Status
 remains Proposed.**
+
+The [expanded bank-local controls](../../../worklogs/h4-decision-checkpoint-0102/followup/bank-local-expanded-main230-results/README.md)
+subsequently passed the selected 48-check state observer, 30-check
+first-consumption policy observer, full DSP and independent eight-assertion
+low-frequency oracle; negative history controls were sensitive. The seven
+receipt records and outputs were independently rehashed, while the outer
+command-session exit was not observed. Affected history still differs from a
+clean trajectory, and output-only fault attribution, later Enable arithmetic,
+an accepted exceptional-output policy and representative native cost remain
+open. **Status remains Proposed; no production implementation is authorized.**

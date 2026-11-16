@@ -7889,3 +7889,8 @@ uses the same live-fade injection matrix and an independently advanced bank
 copy. It preserves that selected valid bank in all 24 calls, with sensitive
 negative controls. It does not establish the output-only fault or complete
 history contract, and it remains a nonshipping candidate.
+
+The [expanded bank-local controls](../../worklogs/h4-decision-checkpoint-0102/followup/bank-local-expanded-main230-results/README.md)
+add selected first-consumption, state, low-frequency and full-DSP checks. Their
+negative controls and unobserved outer-session status are recorded; no complete
+exceptional recovery policy or production H4 correction is implied.

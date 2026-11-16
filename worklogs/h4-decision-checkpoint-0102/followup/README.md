@@ -196,3 +196,9 @@ its observer passed 277 checks and the opposite-claim and no-fallback controls
 were sensitive. The output-only fault path remains conservatively two-bank,
 and the changed affected-channel trajectory, post-Enable publication, full
 recovery contract and native cost remain unestablished. It is nonshipping.
+
+The [expanded bank-local run](bank-local-expanded-main230-results/README.md)
+adds selected consumed-state, first-consumption and low-frequency checks plus
+the full DSP suite and negative history controls. The final run records and
+artifacts were independently rehashed; the outer session status was not
+observed. The affected-history and owner-policy limitations still apply.

@@ -19468,3 +19468,8 @@ The later bank-local diagnostic and its source-bound positive/negative fade
 controls are linked from TESTING, the decision packet and Proposed ADR. Their
 limited preservation evidence is distinct from an approved exceptional policy
 or complete H4 recovery verification.
+
+The subsequent expanded bank-local recovery and low-frequency results are
+linked from TESTING and the Proposed ADR. Their separately verified outputs,
+unobserved outer-session status and unchanged affected-history limitation are
+retained; Test 25 and original evidence remain untouched.

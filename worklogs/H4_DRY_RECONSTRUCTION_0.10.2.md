@@ -521,3 +521,15 @@ attribute the source. The affected fallback history is not phase-matched
 reconstruction and the later Enable overflow is not solved. This is a concrete
 candidate for further boundary tests, not a complete recovery contract, an
 owner policy choice, representative timing or authorization to ship.
+
+An [expanded source-bound run](h4-decision-checkpoint-0102/followup/bank-local-expanded-main230-results/README.md)
+of this bank-local candidate reports 48/48 consumed-state checks, 30/30
+first-consumption policy checks, 5614/0 DSP checks and an independently
+evaluated 8/8 low-frequency oracle. The negative history and fallback controls
+were sensitive. The final seven result records, streams and required CSV were
+independently rehashed; the outer command-session exit was unavailable after a
+session change. Affected history still differs from the clean trajectory.
+These results narrow the remaining engineering work to output-only fault
+attribution, post-Enable/history publication and a supported affected-channel
+recovery trajectory; the owner must separately decide whether that trajectory
+and its eventual measured cost are acceptable. Retain/defer remains available.
