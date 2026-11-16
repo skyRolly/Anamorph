@@ -1,0 +1,4 @@
+FAIL actual settled production Mix=1 selects finite wet bits
+FAIL actual smoothing path uses the correct endpoint and unchanged interiors
+samples=20480 legacy_endpoint_differences=1748 endpoint_bad=1748 interior_bad=0 ramp_bad=466 clock_bad=0
+11 checks, 2 failures

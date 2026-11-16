@@ -1,0 +1,11 @@
+{
+  "purpose": "Negative control: run the same actual-engine N2-06 oracle on unmodified integrated main to establish sensitivity to historical endpoint cancellation.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {"name":"n206-candidate-probe","target":"AnamorphTests","commit":"spec","path":"worklogs/staged-integration-maintenance-0102/numerical-main230/n206-candidate-probe.cpp"}
+  ],
+  "runs": [
+    {"program":"n206-candidate-probe","args":[],"expected_exit":1,"stdout_contains":["FAIL actual settled production Mix=1 selects finite wet bits"]}
+  ]
+}
