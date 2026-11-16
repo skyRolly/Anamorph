@@ -1,0 +1,25 @@
+{
+  "purpose": "N2-07 baseline actual-engine isolated control; injected OS fade is a boundary test, not natural reachability.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "n207-v2-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-candidate-probe-v2.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n207-v2-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL full-wet one-band Drive endpoint retains saturated output",
+        "interior_output_hash=",
+        "held_path=1"
+      ]
+    }
+  ]
+}
