@@ -1,0 +1,62 @@
+{
+  "runs_checked": [
+    {
+      "run": 0,
+      "exit": 0,
+      "expected_exit": 0,
+      "stdout_sha256": "b4dd75f343f3ac5826d6fc36ee28df024a8a25acd5bb6823fa7048961e7490a3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 1,
+      "exit": 0,
+      "expected_exit": 0,
+      "stdout_sha256": "8744d940b9ec5fdf62f94336ccc2a3907beb4703629a7c5ba3e91327f18866cf",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 2,
+      "exit": 1,
+      "expected_exit": 1,
+      "stdout_sha256": "8e6bfc5aa4c5123113bf4545a4ccc5d91c795f5c9daee8a51627e404647d6dec",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 3,
+      "exit": 1,
+      "expected_exit": 1,
+      "stdout_sha256": "d00bf34f47189c7303ae0e01460d21364ec12eb92f1a822182d48f1a1f0355ce",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 4,
+      "exit": 1,
+      "expected_exit": 1,
+      "stdout_sha256": "cc5ceb5f3d53300d80ca89e52e5a8f1e1074461c556f4d69c83372060799d241",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 5,
+      "exit": 0,
+      "expected_exit": 0,
+      "stdout_sha256": "43bfdc487c1d8447b340f7a42e8be6c4dc8538609b2e0f472333bbd5df5315e3",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "run": 6,
+      "exit": 0,
+      "expected_exit": 0,
+      "stdout_sha256": "835f5ed844c0cbdb58ebabd47d6ffbd7bbeecdd9b6a0922a0febee75ce949213",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "required_csv": {
+    "h4-samples.csv": {
+      "sha256": "b6ab7ff13db2b7fe59d6dd025a1bea311c1f52c866bc8b27c6b045498d5ea4f0",
+      "size": 43225520
+    }
+  },
+  "companion_oracle_assertions": 8,
+  "companion_oracle_failures": 0,
+  "outer_runner_exit": "not observed after session change"
+}
