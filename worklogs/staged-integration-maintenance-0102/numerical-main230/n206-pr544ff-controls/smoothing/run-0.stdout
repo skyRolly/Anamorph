@@ -1,0 +1,4 @@
+N2-06: exact finite Mix=1 wet endpoint
+FAIL N2-06: smoothing path selects finite wet and preserves interior arithmetic
+  endpoint/interior/ramp/clock mismatches 0/0/46/0; discriminating legacy samples 1748
+14 checks, 1 failures

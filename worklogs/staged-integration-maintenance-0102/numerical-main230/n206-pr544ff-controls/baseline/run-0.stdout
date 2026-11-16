@@ -1,0 +1,6 @@
+N2-06: exact finite Mix=1 wet endpoint
+FAIL N2-06: settled production Mix=1 selects finite wet bits
+FAIL N2-06: finite extreme cancellation witness preserves actual wet on both channels
+FAIL N2-06: smoothing path selects finite wet and preserves interior arithmetic
+  endpoint/interior/ramp/clock mismatches 1748/0/466/0; discriminating legacy samples 1748
+14 checks, 3 failures

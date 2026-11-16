@@ -1,0 +1,4 @@
+N2-06: exact finite Mix=1 wet endpoint
+FAIL N2-06: settled non-endpoint Mix retains historical float arithmetic
+  endpoint/interior/ramp/clock mismatches 0/4096/0/0; discriminating legacy samples 1748
+14 checks, 1 failures
