@@ -1,0 +1,31 @@
+{
+  "purpose": "Observe the original unmodified finite-input audit probe against the N2-05 flagged diagnostic; output needs separate interpretation.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "0d4468ccc454613ed2b80ffa425fc3353fc9a44e",
+  "probes": [
+    {
+      "name": "n205-natural",
+      "target": "AnamorphTests",
+      "commit": "230da0e2b0b81422f7e3964eea2833c48266a963",
+      "path": "worklogs/dsp-numerical-audit-0102/original/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-natural",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "mix0 input=0x1.2ced32p+127",
+        "mix1 width0",
+        "drive6 input="
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-flagged.patch",
+    "sha256": "408be66b0a37d7624826a2b197751489e6da447361d6f4ab8c2e0ab632c31a17",
+    "purpose": "Keep valid Dry at exact zero when the old Wet difference is invalid, and carry that indication to the existing final reset."
+  }
+}
