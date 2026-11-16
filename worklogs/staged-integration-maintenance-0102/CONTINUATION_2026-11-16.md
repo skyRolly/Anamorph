@@ -106,3 +106,21 @@ diagnostic tree `17ca85e77e49e4701865287e99d7c402f8981a99`. Its fresh build
 uses a separate independently checked JUCE clone, so its dependency index is
 not shared with the concurrent N2-04 replay. The candidate recovery, history,
 full DSP and low-frequency oracle runs are in progress, not yet results.
+
+## Final-main Windows configure failure — attempt 1
+
+The actual-main Build & Validate run `43796315012`, source `230da0e2`, attempt
+1 reported the `windows` job failure at its `Configure` step (job
+`133065821289`, 2026-11-16 03:16:53–03:17:10 UTC). Checkout and the preceding
+PowerShell pluginval-acquisition self-tests passed; the Windows build, tests,
+pluginval and packaging steps in that job were skipped. Other jobs remain in
+progress. The completed #240 head `ae606b42` had an identical tree and passed
+its Windows job, but that does not identify the cause of this attempt.
+
+The GitHub job-log endpoint redirected to artifact storage that returned
+Forbidden. The available metadata establishes the failing step, not whether
+it was product, dependency, runner or network related. Do not attribute the
+failure to a particular cause or treat a successful retry as its original
+log. When the run completes, rerun the failed job on the same exact source,
+retain both attempts and investigate any accessible evidence. Final-main
+validation is not yet complete.
