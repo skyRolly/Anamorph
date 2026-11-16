@@ -1,0 +1,2 @@
+check-portability: installer/uninstaller scratch names agree (.anamorph-install-stage, .anamorph-probe, .probe).
+check-portability: 95 file(s) scanned, 0 violation(s).
