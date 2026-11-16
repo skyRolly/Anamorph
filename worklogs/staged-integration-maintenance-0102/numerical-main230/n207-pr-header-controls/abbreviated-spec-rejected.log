@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 51, in main
+    spec_bytes = blob(a.spec_commit, a.spec_path)
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 29, in blob
+    raise ValueError('packet commit must be a full SHA-1 commit')
+ValueError: packet commit must be a full SHA-1 commit

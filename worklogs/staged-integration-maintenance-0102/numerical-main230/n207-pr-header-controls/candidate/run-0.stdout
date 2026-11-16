@@ -1,0 +1,5 @@
+extreme input=0x1.7d784p+26 output=0x1.09a52ep+0 independent_reference=1.03767666
+extreme input=-0x1.7d784p+26 output=-0x1.09a52ep+0 independent_reference=-1.03767666
+held_path=1 held_output=0x1.090bfep+0 terminal_inside=1 terminal_discriminating=577 terminal_bad=0
+wrapped output=0x1.09a528p+0 latency=6 clock_bad=0
+13 checks, 0 failures
