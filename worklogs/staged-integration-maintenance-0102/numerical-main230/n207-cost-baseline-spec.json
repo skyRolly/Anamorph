@@ -1,0 +1,75 @@
+{
+  "purpose": "Matched N2-07 Drive endpoint whole-engine cost probe; external Callgrind side files require separate hashing and validation.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "drive-cost",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-cost-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "drive-cost",
+      "args": [
+        "48000",
+        "128",
+        "1",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks; wrapped_blocks=0; fade_blocks=0"
+      ]
+    },
+    {
+      "program": "drive-cost",
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "0",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks; wrapped_blocks=0; fade_blocks=0"
+      ]
+    },
+    {
+      "program": "drive-cost",
+      "args": [
+        "48000",
+        "128",
+        "1",
+        "0",
+        "1",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks; wrapped_blocks=256; fade_blocks=0"
+      ]
+    },
+    {
+      "program": "drive-cost",
+      "args": [
+        "48000",
+        "128",
+        "4",
+        "0",
+        "1",
+        "1"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "256 measured blocks; wrapped_blocks=256; fade_blocks=0"
+      ]
+    }
+  ]
+}
