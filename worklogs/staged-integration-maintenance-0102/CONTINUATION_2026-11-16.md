@@ -65,3 +65,44 @@ changes against actual final main, and finish the authorized staged integration
 only if its exact-source checks pass. Release, native/manual acceptance,
 production H4 implementation, new recovery policy and architecture acceptance
 remain separate decisions.
+
+## Resumed execution
+
+#239 actual-main Build `43771546559`, CodeQL `43771546557` and Microsoft
+`43771546579` all completed successfully. #240 exact head `ae606b42` passed
+Build `43771716406` (16 successful jobs, three conditional skips), CodeQL
+`43771745488`, Microsoft `43771748663` and its PR merge-source/dependency
+checks. With live base/head, review threads, mergeability and branch deletion
+rechecked, #240 was merged by the authorized merge method as
+`230da0e2b0b81422f7e3964eea2833c48266a963`, parents `377173bb` and
+`ae606b42`, tree `a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c`. All four
+reviewed PRs are now merged. Compared with `70bbdc22`, only the ten documented
+live documentation and decision-record files differ; `src`, `tests`, `scripts`,
+`.github` and the archived original audit are identical. ADR-0074 remains
+Proposed and the production H4 behavior is unchanged. The evidence and H4
+research branches remain; the original automatic-deletion setting was false and
+is still false. Actual final-main Build `43796315012`, CodeQL `43796314706`
+and Microsoft `43796314750` are running; no final-main success is claimed yet.
+
+The previously overlapping N2-04 v5 relinks were rerun sequentially. Their
+outer runners passed with the expected executable results: positive 109/0,
+original-clear mutation 24/109 failures and unsafe retention 6/109 failures.
+The complete receipts and failed parallel attempts are retained on the research
+branch at `73b75072` and `4ef45146`, respectively.
+
+A separate draft [PR #243](https://github.com/skyRolly/Anamorph/pull/243)
+contains the focused N2-04 correction at head
+`6a65b1d18a992c738b3f004f7690ea87d510bd40`, based on actual main `230da0e2`.
+It preserves the 125-check v6 test, including repeated recovery, and requires
+independent owner review; its merge is not authorized. Exact-head local docs,
+603 citation anchors, state-coverage lint and 112 self-tests, and 22 provenance
+guards passed. Earlier v5 source-bound and v6 local development results retain
+their identities. A new exact-head v6 full DSP/State replay and hosted checks
+are running; no results are implied by their launch.
+
+The nonshipping H4 candidate has an actual-main replay specification at
+`24d2d7f0`, applying the reviewed candidate patch to `230da0e2` with expected
+diagnostic tree `17ca85e77e49e4701865287e99d7c402f8981a99`. Its fresh build
+uses a separate independently checked JUCE clone, so its dependency index is
+not shared with the concurrent N2-04 replay. The candidate recovery, history,
+full DSP and low-frequency oracle runs are in progress, not yet results.
