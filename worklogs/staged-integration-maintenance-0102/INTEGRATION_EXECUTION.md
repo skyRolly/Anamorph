@@ -208,3 +208,22 @@ branch remains at `e64e11fb`; `delete_branch_on_merge` was false at assignment
 start and is still false, so no setting change or restoration was necessary.
 No branch was deleted. #240 remains open until its exact-head/merge-source and
 #239 actual-main post-merge validation pass.
+
+## Completed integration and actual-main validation
+
+The preceding section records the earlier pending checkpoint. #239 post-merge
+Build `43771546559`, CodeQL `43771546557` and Microsoft `43771546579` passed.
+#240 exact-head Build `43771716406`, CodeQL `43771745488`, Microsoft
+`43771748663`, merge-source and dependency checks passed. It was merged by the
+owner-authorized merge method as `230da0e2b0b81422f7e3964eea2833c48266a963`;
+all four authorized PRs are merged and all three formerly dependent bases were
+explicitly retargeted. Main's exact-source [hosted validation](main230-hosted-validation/README.md)
+passed after the documented same-source Windows retry; its original Configure
+failure remains unattributed because the attempt-specific log was inaccessible.
+
+The original and final automatic branch-deletion setting are false. The
+prerequisite `codex/0102-n2-evidence` remains at `e64e11fb` and the independent
+H4 research branch remains at `f511198d`. ADR-0074 is still Proposed. Subsequent
+#243, #244 and #245 are independent maintenance PRs and are not authorized to
+merge under the completed integration decision. Their current state and the
+separate H4 policy boundary are in [the continuation record](CONTINUATION_2026-11-16.md).
