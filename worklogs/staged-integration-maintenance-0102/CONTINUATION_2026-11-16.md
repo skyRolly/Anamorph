@@ -254,3 +254,33 @@ actual x4 wrapping. These are virtualized whole-engine instruction counts,
 not native timing, deadline or instance-capacity evidence; they do not measure
 the newer H4 candidate. PR #245 remains draft, open and unmerged pending final
 exact-head validation and owner review.
+
+## Final maintenance checkpoint
+
+#245 current head `44ef025aab46e09a8be7069184ce79071b7d5a09` passed
+[exact-head Build, CodeQL and Microsoft analysis](numerical-main230/n207-pr44-hosted-validation/README.md),
+with its merge-source check and dependency review. Its merge ref
+`7f5be00f2935d0936eaecc01fcf01a2d05513f5a` has the same tree as the PR head.
+The predecessor fresh Linux replay passed 13 Drive, 392 Multiband, 720 duck,
+5,627 DSP and 16,555 State checks; it remains scoped to `f78b5320`, not called
+a current-head local replay. The original wrapper exit was unavailable, but
+the container exit and all executable exits were observed 0 and outputs were
+rehashed. #245 is now non-draft, open, mergeable and ready for independent
+owner review; auto-merge is disabled and its merge is not authorized. Its
+earlier failed citation self-test and inaccessible original job log remain
+separate. All three new maintenance PRs need separate owner decisions.
+
+The N2-05 nonshipping reset-indication diagnostic preserved the selected
+finite-input witness and the [injected Wet-state boundary](numerical-main230/n205-flagged-results/README.md);
+a naive output-only shortcut left Wet invalid until Mix re-entry. In a further
+[actual x4 test](numerical-main230/n205-x4-results/README.md), the diagnostic
+preserved the fault block but only 116/128 exact Dry samples on the next
+block; adding just #243's N2-04 engine correction preserved 128/128 in that
+selected next block. The injected state is not natural-reachability evidence.
+The additional N2-05 detection boundary needs architecture review and broader
+recovery tests before a production proposal. No H4 implementation was shipped.
+
+A [pairwise virtual merge rehearsal](numerical-main230/maintenance-merge-rehearsal/README.md)
+records documentation/citation conflicts and the #244/#245 test-registration
+conflict. No new maintenance branches were merged or retargeted; eventual
+owner-authorized integration must resolve and revalidate each exact source.
