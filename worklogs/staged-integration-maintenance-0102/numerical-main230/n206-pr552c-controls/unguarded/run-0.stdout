@@ -1,0 +1,4 @@
+N2-06: exact finite Mix=1 wet endpoint
+FAIL N2-06: invalid dry reaches the existing self-heal without muting the valid opposite sample
+  endpoint/interior/ramp/clock mismatches 0/0/0/0; discriminating legacy samples 1748
+14 checks, 1 failures
