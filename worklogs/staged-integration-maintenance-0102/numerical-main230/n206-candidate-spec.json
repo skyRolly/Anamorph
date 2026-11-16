@@ -1,0 +1,17 @@
+{
+  "purpose": "Nonshipping engine-only N2-06 finite-wet endpoint candidate: verify actual settled and smoothing output, historical interior rounding, smoother clocks, and selected invalid dry/wet self-heal controls against integrated main.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "e7ff97adc41e48d6e012660832e7fcc62842d232",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n206-finite-endpoint.patch",
+    "sha256": "33a949720a3be46c17b9d6d41e258677096b30a243f3ae6c7f5ee658a979eb61",
+    "purpose": "Select the finite wet sample only at exact Mix=1 in both current Mix loops, leaving non-finite operands and interior arithmetic on the original expression. This is a diagnostic candidate, not a production or architecture decision."
+  },
+  "probes": [
+    {"name":"n206-candidate-probe","target":"AnamorphTests","commit":"spec","path":"worklogs/staged-integration-maintenance-0102/numerical-main230/n206-candidate-probe.cpp"}
+  ],
+  "runs": [
+    {"program":"n206-candidate-probe","args":[],"expected_exit":0,"stdout_contains":["legacy_endpoint_differences=","endpoint_bad=0 interior_bad=0 ramp_bad=0 clock_bad=0","11 checks, 0 failures"]}
+  ]
+}
