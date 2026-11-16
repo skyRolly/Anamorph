@@ -1,0 +1,54 @@
+{
+  "checks": [
+    {
+      "case": "tone20",
+      "assertion": "H4 consumer gate actually ran with an executing wet bank",
+      "passed": true
+    },
+    {
+      "case": "tone20",
+      "assertion": "re-entry and subsequent state consumption occurred",
+      "passed": true
+    },
+    {
+      "case": "tone20",
+      "assertion": "first 960 samples reconstruct within the healthy rounding envelope",
+      "passed": true,
+      "observed": 0.0,
+      "limit": 1.9073486328125e-06
+    },
+    {
+      "case": "tone20",
+      "assertion": "state recovers after the stimulus transition",
+      "passed": true,
+      "observed": 0.0,
+      "limit": 1.9073486328125e-06
+    },
+    {
+      "case": "tone50",
+      "assertion": "H4 consumer gate actually ran with an executing wet bank",
+      "passed": true
+    },
+    {
+      "case": "tone50",
+      "assertion": "re-entry and subsequent state consumption occurred",
+      "passed": true
+    },
+    {
+      "case": "tone50",
+      "assertion": "first 960 samples reconstruct within the healthy rounding envelope",
+      "passed": true,
+      "observed": 0.0,
+      "limit": 1.9073486328125e-06
+    },
+    {
+      "case": "tone50",
+      "assertion": "state recovers after the stimulus transition",
+      "passed": true,
+      "observed": 0.0,
+      "limit": 1.9073486328125e-06
+    }
+  ],
+  "failed": 0,
+  "assertions": 8
+}

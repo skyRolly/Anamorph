@@ -62,3 +62,9 @@ then presenting the measurable exceptional trajectory and native cost for an
 owner choice. Alternatively the owner may retain or defer the documented H4
 limitation. A material recovery policy or different filter representation needs
 its applicable architecture review and explicit owner approval before shipping.
+
+
+The [actual-main replay](actual-main230-results/README.md) reproduces the
+consumption-aware candidate's focused recovery and first-consumption results
+on `230da0e2`; it does not resolve the affected-channel policy or validate
+the separate fallback's full behavior.

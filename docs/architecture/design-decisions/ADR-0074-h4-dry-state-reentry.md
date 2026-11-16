@@ -142,3 +142,5 @@ The tested local reset clears both dry banks of the affected channel; the
 first-consumption oracle does not establish preservation of a valid same-channel
 fade bank. That is an additional explicit recovery-policy and verification
 limit, not an observed opposite-channel or Wet reset.
+
+The [actual integrated-main candidate replay](../../../worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) reproduces the scoped recovery, history and low-frequency observations on `230da0e2`. The affected-history, live-fade, exceptional allocation and native performance limits remain; this does not accept a policy or the ADR.

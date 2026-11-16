@@ -1,0 +1,3 @@
+case=off latency=0 changed_history=32 changed_output=32 first_difference=0
+case=x4 latency=6 changed_history=32 changed_output=26 first_difference=6
+28 checks, 0 failures

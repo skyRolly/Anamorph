@@ -1,0 +1,106 @@
+{
+  "purpose": "Fresh nonshipping consumption-aware H4 candidate replay against actual integrated main: focused recovery, low-frequency oracle, first-consumption history and full DSP. Injected state is a boundary test, not a natural-reachability claim.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "17ca85e77e49e4701865287e99d7c402f8981a99",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-candidate-integration-70bb.patch",
+    "sha256": "332c230af9dd82298c79f77db1087d37dc7112ad48ce9c91d15aac72d0927284",
+    "purpose": "The reviewed nonshipping consumption-aware dry maintenance and channel-local recovery, applied to the actual integrated production source."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "consumption-probe-v2",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-consumption-probe-v2.cpp"
+    },
+    {
+      "name": "h4-oracle",
+      "target": "AnamorphTests",
+      "commit": "230da0e2b0b81422f7e3964eea2833c48266a963",
+      "path": "worklogs/h4-dry-state-0102/h4_probe.cpp"
+    },
+    {
+      "name": "history-step",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/h4-decision-checkpoint-0102/followup/h4-history-step-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "consumption-probe-v2",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "bands=1 relevant_states=0",
+        "bands=4 relevant_states=16",
+        "affected_output_differences=",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "h4-oracle",
+      "args": [
+        "h4-samples.csv"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "tone20,",
+        "tone50,",
+        "wet_changed_blocks"
+      ],
+      "required_artifacts": [
+        {
+          "path": "h4-samples.csv"
+        }
+      ]
+    },
+    {
+      "program": "history-step",
+      "args": [
+        "positive"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off latency=0",
+        "case=x4 latency=6",
+        "28 checks, 0 failures"
+      ]
+    },
+    {
+      "program": "history-step",
+      "args": [
+        "claim-clean"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that finite history equals clean reference"
+      ]
+    },
+    {
+      "program": "history-step",
+      "args": [
+        "invalid-history"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "injected_invalid_history_detected=1",
+        "FAIL"
+      ]
+    },
+    {
+      "program": "AnamorphTests",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "5614 checks, 0 failures",
+        "ALL TESTS PASSED"
+      ]
+    }
+  ]
+}

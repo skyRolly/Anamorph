@@ -401,3 +401,5 @@ The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/READM
 - `worklogs/0102_DSP_DELIVERY_2026-11-13.md` — N2-02/N2-03 independent review heads, combined validation, H4/V2-01 decision and preserved P3 queue.
 
 - `worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md` — nonshipping H4 recovery-policy comparison and N2-09 evidence boundary.
+
+- `worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/` — nonshipping source-bound H4 candidate replay and independent oracle evidence.

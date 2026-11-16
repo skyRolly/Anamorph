@@ -19451,3 +19451,6 @@ The subsequently executed conditioned-dry fallback and its scoped controls are l
 The fallback record and Proposed ADR also state that its affected-channel reset covers both dry banks; live-fade preservation is not established by the one-sample oracle.
 
 The nonshipping H4 actual-main replay specification is indexed in TESTING and the follow-up; no unexecuted result is claimed.
+
+
+The completed H4 actual-main replay and its initially mis-invoked, then corrected independent oracle are indexed in the follow-up, Proposed ADR, H4 packet, TESTING and repository source indexes. Its affected-history and native-performance limits remain explicit.

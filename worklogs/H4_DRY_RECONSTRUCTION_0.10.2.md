@@ -490,3 +490,5 @@ The [follow-up record](h4-decision-checkpoint-0102/followup/README.md) adds an e
 
 
 The subsequent nonshipping [conditioned-dry fallback experiment](h4-decision-checkpoint-0102/followup/conditioned-fallback-70bb-results/README.md) passed its scoped first-consumption oracle and negative controls but still produced affected history different from a clean twin. It does not establish a complete recovery policy or representative native cost; ADR-0074 remains Proposed.
+
+The [actual-main candidate replay](h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) reproduces the focused H4 recovery and low-frequency observations on `230da0e2`, with source-bound receipts and sensitive history controls. The candidate remains nonshipping and ADR-0074 Proposed.

@@ -283,3 +283,5 @@ Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numeri
 0.10.2 delivery: [ordinary DSP correction PRs, final-source validation and H4 owner decision](worklogs/0102_DSP_DELIVERY_2026-11-13.md). The staged integration record tracks the owner-authorized N2 correction and H4 documentation merges; the independent cleanup fixture PR #242 was merged earlier.
 
 Nonshipping H4 recovery-policy and N2-09 evidence: [decision follow-up](worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md). ADR-0074 remains Proposed.
+
+Actual-main nonshipping H4 candidate evidence: [replay and oracle](worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/README.md).

@@ -7869,3 +7869,5 @@ The [conditioned-dry fallback execution](../../worklogs/h4-decision-checkpoint-0
 
 The H4 follow-up specifies an actual-main candidate replay at `230da0e2`;
 execution and its independent CSV oracle must be recorded separately.
+
+The [actual-main H4 candidate replay](../../worklogs/h4-decision-checkpoint-0102/followup/actual-main230-results/README.md) executed the scoped recovery, history and full DSP checks plus an independent low-frequency matrix oracle. Its first wrong-input oracle attempt and the corrected result are both recorded; Test 25 remains unchanged.

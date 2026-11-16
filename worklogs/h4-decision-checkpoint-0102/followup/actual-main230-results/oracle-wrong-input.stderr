@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/workspace/h4-actual-main-candidate/worklogs/h4-dry-state-0102/verify_oracle.py", line 26, in <module>
+    'passed':int(r['gate_clean_blocks'])>0 and int(r['wet_changed_blocks'])>0},
+                 ~^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'gate_clean_blocks'

@@ -174,3 +174,9 @@ An [actual-main candidate replay specification](h4-candidate-main230-spec.json)
 binds the same nonshipping candidate to integrated main `230da0e2`, including
 focused recovery, history-boundary controls, full DSP and a separately evaluated
 low-frequency CSV oracle. The specification itself is not a result.
+
+The [actual-main candidate replay](actual-main230-results/README.md) now
+reproduces the 48-check recovery probe, 28-check history trace, sensitive
+negative controls, 5614-check DSP suite and eight low-frequency oracle
+assertions on `230da0e2`. A wrong-input oracle attempt is retained separately.
+The affected-history and policy limitations remain.
