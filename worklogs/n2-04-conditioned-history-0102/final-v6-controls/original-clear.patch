@@ -1,0 +1,15 @@
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2317,11 +2317,7 @@
+         // also have reached this ring, so scrub every non-finite slot before any
+         // later Mix read. The ring is fixed-size and this work replaces the
+         // existing bounded clear on the exceptional recovery path only.
+-        for (int i = 0; i < ddSize; ++i)
+-        {
+-            if (! std::isfinite (ddL[i])) ddL[i] = 0.0f;
+-            if (! std::isfinite (ddR[i])) ddR[i] = 0.0f;
+-        }
++        dryDelayBuffer.clear();
+         dryAlignDelayBuffer.clear();
+         // The oversampling latency stand-in is a delay line on the MAIN path and was
+         // written further up this very block, so a non-finite sample is already
