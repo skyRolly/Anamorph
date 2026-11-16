@@ -100,12 +100,23 @@ guards passed. Earlier v5 source-bound and v6 local development results retain
 their identities. A new exact-head v6 full DSP/State replay and hosted checks
 are running; no results are implied by their launch.
 
-The nonshipping H4 candidate has an actual-main replay specification at
-`24d2d7f0`, applying the reviewed candidate patch to `230da0e2` with expected
-diagnostic tree `17ca85e77e49e4701865287e99d7c402f8981a99`. Its fresh build
-uses a separate independently checked JUCE clone, so its dependency index is
-not shared with the concurrent N2-04 replay. The candidate recovery, history,
-full DSP and low-frequency oracle runs are in progress, not yet results.
+The nonshipping H4 candidate was freshly replayed on actual main `230da0e2`
+using the specification at `24d2d7f0` and diagnostic tree
+`17ca85e77e49e4701865287e99d7c402f8981a99`; the independently checked JUCE
+clone did not share its Git index with the concurrent N2-04 replay. The scoped
+recovery controls passed 48/0 and history controls passed 28/0; deliberate
+false-clean and invalid-history mutations failed as expected. Full DSP passed
+5614/0 and the independent low-frequency matrix oracle passed 8/8. A first
+oracle invocation used the wrong CSV and failed with `KeyError`; that attempt
+is retained separately. The original injected-state experiment still produced
+128/128 and 122/128 affected output differences at zero and actual x4 wrapped
+latency, respectively, and 128/128 newly written history differences in both
+cases. These are not clean-reference recovery. Complete receipts, commands,
+negative controls and the oracle distinction are recorded on the research
+branch at `7bf87e7f313c964dfcb223b9ad3975ac36bffddf`. The acceptable
+affected-channel trajectory and aligned-history policy, live fade-bank
+coverage, exceptional allocation and representative native performance remain
+unestablished; ADR-0074 is still Proposed.
 
 ## Final-main Windows configure failure — attempt 1
 
