@@ -1,0 +1,44 @@
+Test 59 extension: self-heal preserves finite conditioned dry history (N2-04)
+  selected factor 2, bad channel 0, latency 4: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  selected factor 2, bad channel 1, latency 4: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  selected factor 4, bad channel 0, latency 6: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  selected factor 4, bad channel 1, latency 6: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  selected factor 8, bad channel 0, latency 6: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  selected factor 8, bad channel 1, latency 6: observed heal 1, current/history 1/0
+  [FAIL] N2-04: valid opposite-channel conditioned delay history survives recovery
+  actual wrapped algorithm 2 factor 2 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 2 factor 2 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 2 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 2 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 2 factor 4 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 2 factor 4 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 4 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 4 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 2 factor 8 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 2 factor 8 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 8 bad channel 0: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  actual wrapped algorithm 3 factor 8 bad channel 1: wrap/heal/history 1/1/0
+  [FAIL] N2-04: conditioned history survives recovery with actual oversampling
+  [FAIL] N2-04: finite conditioned history retains exact bits including signed zero
+  [FAIL] N2-04: finite conditioned history retains exact bits including signed zero
+  [FAIL] N2-04: finite conditioned history retains exact bits including signed zero
+  [FAIL] N2-04: valid opposite-channel conditioned input survives the same heal
+  [FAIL] N2-04: valid opposite-channel conditioned input survives the same heal
+  [FAIL] N2-04: valid opposite-channel conditioned input survives the same heal
+109 checks, 24 failures

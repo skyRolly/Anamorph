@@ -1,0 +1,37 @@
+{
+  "purpose": "Isolated N2-04 original-clear negative control against preparation source; engine-only mutation, identical committed test and allocation support bytes.",
+  "source_head": "623d3c33b6e381a34d09dd00fff5a59a6b3838ab",
+  "source_tree": "30117ea00b8097aa299ade95e106c857075fd8c6",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/original-clear.patch",
+    "sha256": "8f2fe2f3be780707fd7cca0fdd43eb2806bfef61faca62414d7b31d50fd859f7",
+    "purpose": "Replace only the conditioned ring sanitation loop with the original clear."
+  },
+  "targets": [
+    "AnamorphTests"
+  ],
+  "probes": [
+    {
+      "name": "n204-probe",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/probe.cpp",
+      "support": [
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/AllocationGuard.h",
+        "worklogs/n2-04-conditioned-history-0102/provisional-v5/controlled/n2_conditioned_history_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "n204-probe",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "109 checks, 24 failures",
+        "[FAIL] N2-04"
+      ]
+    }
+  ]
+}
