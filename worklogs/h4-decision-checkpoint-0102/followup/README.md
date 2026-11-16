@@ -169,3 +169,8 @@ passed its 30-check injected first-consumption policy oracle; switch-off,
 false-clean-history and invalid-history controls were sensitive. Its affected
 history still differed from the clean twin, and neither the complete recovery
 contract nor native cost is established.
+
+An [actual-main candidate replay specification](h4-candidate-main230-spec.json)
+binds the same nonshipping candidate to integrated main `230da0e2`, including
+focused recovery, history-boundary controls, full DSP and a separately evaluated
+low-frequency CSV oracle. The specification itself is not a result.

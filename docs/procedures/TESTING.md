@@ -7866,3 +7866,6 @@ controls are specified in the H4 follow-up; a specification is not an executed
 result or approval of an exceptional-output policy.
 
 The [conditioned-dry fallback execution](../../worklogs/h4-decision-checkpoint-0102/followup/conditioned-fallback-70bb-results/README.md) reports the positive first-consumption result and switch-off, false-reference and invalid-history negative controls. It is nonshipping, deliberately injected evidence and does not extend Test 25 or approve the policy.
+
+The H4 follow-up specifies an actual-main candidate replay at `230da0e2`;
+execution and its independent CSV oracle must be recorded separately.
