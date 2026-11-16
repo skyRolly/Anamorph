@@ -30,3 +30,10 @@ additional detection boundary requires assessment under the signal-flow
 Architecture Review Gate and ADR-0009 before shipping. A separate [replay of the original finite-input witness](../n205-flagged-natural-results/README.md)
 returned 128/128 exact Dry samples on the selected extreme input, versus 0/128
 on main; it did not directly inspect the prior invalid stage or the flag. No production or H4 correction is included.
+
+The later [actual x4 interaction](../n205-x4-results/README.md) preserved the
+selected fault block with this diagnostic but retained only 116/128 exact Dry
+samples in the next block because the existing conditioned history was cleared.
+Adding the independent #243 engine correction preserved 128/128 in that
+selected next block. This is diagnostic evidence of an interaction, not a
+merged correction or a complete recovery contract.

@@ -1,0 +1,32 @@
+{
+  "purpose": "N2-05 injected wet-state boundary under actual x4 wrapping, flagged; compare independent N2-04 history behavior.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "0d4468ccc454613ed2b80ffa425fc3353fc9a44e",
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-wet-state-x4.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "wrapped=1",
+        "latency=6"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-flagged.patch",
+    "sha256": "408be66b0a37d7624826a2b197751489e6da447361d6f4ab8c2e0ab632c31a17",
+    "purpose": "Keep valid Dry at exact zero when the old Wet difference is invalid, and carry that indication to the existing final reset."
+  }
+}

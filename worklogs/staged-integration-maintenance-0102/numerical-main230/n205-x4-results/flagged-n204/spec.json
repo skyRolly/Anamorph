@@ -1,0 +1,32 @@
+{
+  "purpose": "N2-05 injected wet-state boundary under actual x4 wrapping, flagged-n204; compare independent N2-04 history behavior.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "f50db51e88fad822e220d6ddad6f5e2617fe8d55",
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-wet-state-x4.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "wrapped=1",
+        "latency=6"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n205-flagged-n204.patch",
+    "sha256": "38180928c8ba79c74fdee69efe8c7a5f84b3cb4def4fb6cb631a298c210d9e8b",
+    "purpose": "N2-05 nonshipping reset-indication diagnostic plus exactly the N2-04 PR engine correction."
+  }
+}
