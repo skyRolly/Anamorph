@@ -509,3 +509,15 @@ the selected calls do not prove worst-case timing or a complete recovery matrix.
 Preserving that valid same-channel bank, or explicitly justifying its loss, is
 an additional requirement for a supported policy. No exceptional-output
 contract has been accepted and ADR-0074 remains Proposed.
+
+The subsequent [bank-local diagnostic](h4-decision-checkpoint-0102/followup/bank-local-main230-results/README.md)
+resets only processed banks with observed invalid recursive state. It preserved
+the independently advanced other live bank in all 24 selected injected
+recoveries, while the checked Wet, opposite channel and raw/conditioned
+histories remained unchanged. The selected recovery calls had no observed
+allocations with live guards. If only the dry output is invalid and monitored
+state is finite, the diagnostic still resets both banks because it cannot
+attribute the source. The affected fallback history is not phase-matched
+reconstruction and the later Enable overflow is not solved. This is a concrete
+candidate for further boundary tests, not a complete recovery contract, an
+owner policy choice, representative timing or authorization to ship.

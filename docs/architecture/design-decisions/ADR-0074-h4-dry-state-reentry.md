@@ -159,3 +159,14 @@ does not yet meet a demonstrated same-channel preservation policy, and its
 affected output and aligned history still differ from a clean trajectory.
 Continue targeted recovery-policy investigation, or retain/defer the limitation;
 **status remains Proposed and production H4 remains unchanged.**
+
+The [bank-local nonshipping comparison](../../../worklogs/h4-decision-checkpoint-0102/followup/bank-local-main230-results/README.md)
+retained the independently advanced other live bank in 24/24 selected
+injected recoveries and preserved the checked unrelated state, with no
+observed allocations in those calls. Output-only faults without invalid
+monitored state remain ambiguously attributed and still reset both banks in
+this experiment; affected history and post-Enable arithmetic remain open.
+The selected fault injection is not natural-reachability evidence. A fuller
+recovery oracle, proposed exceptional-output policy and representative native
+cost evidence are needed before selecting a production candidate. **Status
+remains Proposed.**

@@ -189,3 +189,10 @@ observed no allocations in those selected 24 injected recovery calls, with
 its liveness checks active. These are deliberate fault injections and do not
 establish natural reachability, complete recovery or a real-time deadline.
 The affected-channel policy and ADR-0074 remain unaccepted.
+
+The subsequent [bank-local candidate](bank-local-main230-results/README.md)
+preserved the other live bank in 24/24 otherwise matched injected recoveries;
+its observer passed 277 checks and the opposite-claim and no-fallback controls
+were sensitive. The output-only fault path remains conservatively two-bank,
+and the changed affected-channel trajectory, post-Enable publication, full
+recovery contract and native cost remain unestablished. It is nonshipping.

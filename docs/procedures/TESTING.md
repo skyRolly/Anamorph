@@ -7883,3 +7883,9 @@ policy-observation checks and two sensitive negative controls are scoped to
 deliberate injection; they do not establish natural reachability, complete
 recovery or native deadline safety. They are nonshipping evidence and do not
 change Test 25 or accept ADR-0074.
+
+The [bank-local diagnostic comparison](../../worklogs/h4-decision-checkpoint-0102/followup/bank-local-main230-results/README.md)
+uses the same live-fade injection matrix and an independently advanced bank
+copy. It preserves that selected valid bank in all 24 calls, with sensitive
+negative controls. It does not establish the output-only fault or complete
+history contract, and it remains a nonshipping candidate.

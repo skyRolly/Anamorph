@@ -19463,3 +19463,8 @@ links from the decision packet and Proposed ADR-0074. The record distinguishes
 valid same-channel state reset from the checked preserved Wet and opposite
 channel, and selected allocation observations from real-time or native timing
 proof. The original historical evidence and Test 25 remain unchanged.
+
+The later bank-local diagnostic and its source-bound positive/negative fade
+controls are linked from TESTING, the decision packet and Proposed ADR. Their
+limited preservation evidence is distinct from an approved exceptional policy
+or complete H4 recovery verification.
