@@ -19449,6 +19449,8 @@ finite saturation result at blend 1, while the live algorithm reference did
 not describe that boundary. Inserting the focused correction also moved nine
 existing declared citation targets and eight signal-flow citations; their source
 lines and declarations were re-aimed together. A subsequent 39 source-line
-citations were incrementally re-anchored by the citation checker. DSP_ALGORITHMS, the graph, ADR-0003, TESTING, KNOWN_ISSUES
+citations were incrementally re-anchored by the citation checker. Its self-test
+then exposed four additional declarations whose targets had moved; those were
+re-aimed to the same active dry-bank span as the document. DSP_ALGORITHMS, the graph, ADR-0003, TESTING, KNOWN_ISSUES
 and Unreleased now describe the finite endpoint and its independent regression.
 The documentation does not claim an audible impact or native-host acceptance.
