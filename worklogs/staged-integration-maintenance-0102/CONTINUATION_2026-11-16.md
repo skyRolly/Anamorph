@@ -284,3 +284,10 @@ A [pairwise virtual merge rehearsal](numerical-main230/maintenance-merge-rehears
 records documentation/citation conflicts and the #244/#245 test-registration
 conflict. No new maintenance branches were merged or retargeted; eventual
 owner-authorized integration must resolve and revalidate each exact source.
+
+The three open PR descriptions now link the pairwise conflict rehearsal; #243
+also links the selected x4 N2-04/N2-05 interaction without claiming a combined
+production fix. The [manual acceptance scope](MANUAL_ACCEPTANCE_SCOPE.md)
+preserves the earlier owner attestation and identifies targeted review of the
+new DSP behavior. No further PR merge, architecture acceptance, release or
+new human/hardware acceptance has been authorized or inferred.
