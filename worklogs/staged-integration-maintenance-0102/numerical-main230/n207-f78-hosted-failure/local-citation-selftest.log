@@ -1,0 +1,6 @@
+self-test FAIL: DELIBERATE_REAIMS entry is live: docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md :: src/dsp/AnamorphEngine.cpp:1885-2004: got False, want True
+self-test FAIL: DELIBERATE_REAIMS entry is live: docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md :: src/dsp/AnamorphEngine.cpp:1885-2004: got False, want True
+self-test FAIL: DELIBERATE_REAIMS entry is live: docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md :: src/dsp/AnamorphEngine.cpp:1885-2004: got False, want True
+self-test FAIL: DELIBERATE_REAIMS entry is live: docs/architecture/design-decisions/ADR-0005-phase-matched-dry-reconstruction.md :: src/dsp/AnamorphEngine.cpp:1885-2004: got False, want True
+
+check-citations: 4 of 267 self-test case(s) failed.
