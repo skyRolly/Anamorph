@@ -145,8 +145,12 @@ receipt and raw results are committed on `codex/0102-n2-04-research` at
 relinks ran serially: positive 125/0, original-clear mutation 28/125 failures,
 and unsafe-retention mutation 6/125 failures, each with its expected process
 exit. Their receipts and raw results are committed at `1091fbd8`. The earlier
-overlapping v5 attempts remain documented separately. Hosted exact-head checks
-and the PR's independent owner review remain separate.
+overlapping v5 attempts remain documented separately. Exact-head hosted Build
+`43796853198`, CodeQL `43796889447` and Microsoft `43796892090` passed, as did
+the PR merge-source and dependency checks. The full Build run had 16 successful
+jobs and three conditional skips. PR #243 remains open and was marked ready
+for independent owner review; auto-merge is disabled and no new PR merge is
+authorized.
 
 The fresh integrated-main numerical replay at `31bf22e2` reproduced the
 selected N2-05, N2-06 and N2-07 witnesses. The N2-06 ordinary finite-input
@@ -154,3 +158,24 @@ comparison is deliberately cancellation-sensitive, not a claim of incidence
 or audibility. A nonshipping finite-operand endpoint candidate and its
 independent smoother, interior and self-heal controls are specified at
 `e2ea2fd8`; their specification is not a passing result or a production PR.
+
+The subsequently executed [N2-06 diagnostic controls](numerical-main230/n206-candidate-results/README.md)
+at `825d22e5` pass 11/11 with the finite-operand endpoint candidate; the
+unmodified-main control fails the two intended endpoint assertions. This is
+scoped evidence and does not itself establish all Match, Multiband Enable,
+oversampling, non-finite or regression interactions. A separate production
+branch is under development; no N2-06 PR or merge is implied by this record.
+
+The [live-fade H4 fallback control](https://github.com/skyRolly/Anamorph/tree/4f9195a99a148c2031761a741b842267874892c7/worklogs/h4-decision-checkpoint-0102/followup/fade-collateral-main230-results)
+passed 277 selected observations and showed that all 24 deliberate recovery
+events reset valid state in the other live dry bank of the affected channel.
+Checked Wet, opposite channel, and raw/conditioned histories were preserved;
+no allocations were observed in those selected calls with live guards. Both
+specified negative controls failed 24 assertions as expected. Injection does
+not establish natural reachability. This is nonshipping evidence, not a new
+accepted recovery policy or deadline guarantee; ADR-0074 remains Proposed.
+
+After the final-main Build run finished with its original Windows configure
+failure, GitHub reran the failed Windows job on the same source `230da0e2` as
+attempt 2 of `43796315012`. That retry is in progress; its result and the
+original inaccessible failure log must remain separate.
