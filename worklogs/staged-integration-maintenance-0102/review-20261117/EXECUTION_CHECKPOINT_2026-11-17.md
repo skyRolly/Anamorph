@@ -38,14 +38,17 @@ N2-04 125/125, N2-06 16/16, N2-07 20/20, N2-03 392/392, N2-02 720/720,
 full DSP 5775/0 and State 16555/0. Its hosted Build & Validate failed the
 shadow warning in the new Mix test; its successful CodeQL and Microsoft
 analysis apply only to that historical head. The corrected `d5e38a53` local
-fresh replay and hosted workflows are pending. Earlier rejected and abandoned
+[fresh replay](combined-d5e-results/README.md) has since passed those same
+focused selectors and full DSP/State suites with an observed runner exit of 0;
+its hosted workflows remain separate. Earlier rejected and abandoned
 attempts are retained in [stale-head-attempt](stale-head-attempt/README.md) and
 [combined-b182-results](combined-b182-results/README.md).
 
 The 17 isolated mutation specifications and final test-support bytes are
 recorded in [combined-mutations-final-tests](combined-mutations-final-tests/README.md).
-Their results are not yet claimed here. The runner is serial because its
-receipt-controlled relinks share mutable diagnostic build inputs. The archive
+Their serial execution is in progress and results are not yet claimed here.
+The runner is serial because its receipt-controlled relinks share mutable
+diagnostic build inputs. The archive
 under `worklogs/dsp-numerical-audit-0102/original` was compared against actual
 main and remains byte-identical. The research branch and the evidence
 prerequisite branch remain present; no automatic or manual deletion is planned.

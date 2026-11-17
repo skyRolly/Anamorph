@@ -1,0 +1,94 @@
+{
+  "source_head": "d5e38a534cb2252476b0569ae6fda9ae66074dbb",
+  "source_tree": "65938e2ca5f0068f2ed404870a88a5d4da5673f4",
+  "spec_commit": "a66dae8b3188e9e38f9ec6f9d7f42500aac9a71e",
+  "checks": [
+    {
+      "index": 0,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "125 checks, 0 failures": true
+      }
+    },
+    {
+      "index": 1,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "16 checks, 0 failures": true
+      }
+    },
+    {
+      "index": 2,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "20 checks, 0 failures": true
+      }
+    },
+    {
+      "index": 3,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "Match0 legacy wet endpoint visible/masked": true,
+        "Match1 legacy wet endpoint visible/masked": true,
+        "392 checks, 0 failures": true
+      }
+    },
+    {
+      "index": 4,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "720 checks, 0 failures": true
+      }
+    },
+    {
+      "index": 5,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "0 failures": true,
+        "ALL TESTS PASSED": true
+      }
+    },
+    {
+      "index": 6,
+      "exit": 0,
+      "expected_exit": 0,
+      "hashes": {
+        "stdout": true,
+        "stderr": true
+      },
+      "markers": {
+        "16555 checks, 0 failure(s)": true
+      }
+    }
+  ]
+}

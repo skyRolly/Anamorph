@@ -1,0 +1,1529 @@
+=== Anamorph DSP self-tests ===
+Test 1: MS encode/decode round-trip
+  max round-trip error = 1.788e-07
+Test 2: no NaN / Inf / denormals across feature matrix
+Test 3+4: true-bypass null + latency reporting
+  bypass null max diff (OS off) = 0.000e+00
+  OS factor latency=4, impulse peak at 4
+  OS factor latency=6, impulse peak at 6
+  OS factor latency=6, impulse peak at 6
+Test 5: default parameters are transparent
+  default transparency max diff = 5.960e-08
+Test 6: Mono Maker collapses low-frequency side energy
+  side RMS  on=0.0057  off=0.7019
+  mono-low Mid RMS on=0.7080 (expect ~0.70)
+Test 7: Multiband preserves the mono sum across Mix (phase fix)
+  Mix=0.25 mono-sum RMS out/in = 1.000 (expect ~1.0; unaligned dry combs to <0.8)
+  Mix=0.50 mono-sum RMS out/in = 1.000 (expect ~1.0; unaligned dry combs to <0.8)
+  Mix=0.75 mono-sum RMS out/in = 1.000 (expect ~1.0; unaligned dry combs to <0.8)
+Test 8: Mono Maker (post-Mix) collapses the low Side at any Mix
+  Mix=0.25  output low-Side / input = 0.009 (expect << 1)
+  Mix=0.50  output low-Side / input = 0.010 (expect << 1)
+  Mix=0.75  output low-Side / input = 0.011 (expect << 1)
+Test 9: Band Solo is a post-everything band-pass monitor
+  100Hz: band0 0.643 band3 0.000 ; 6kHz: band3 0.671 band0 0.000
+  energy  no-solo 3381.9  all-bands-solo 3343.9 (ratio 0.989, expect ~1)
+Test 10: Level Match works and is solo-independent
+  match gain  solo off -3.51 dB  solo band0 -3.51 dB
+Test 11: no clicks across Solo / Mix / Gain / Balance / A-B / Reset
+  max sample-to-sample delta = 0.0123 (clean-sine slew ~0.008) ; max |out| = 0.260
+Test 12: toggling Band Solo in silence emits no ghost signal
+  max |out| over silent solo toggles = 0.00e+00
+Test 13: Level Match reads ~0 at unity (no bias)
+  unity match gain = -0.000 dB (expect ~0)
+Test 14: Level Match predict doesn't ratchet on repeated Drive up/down (paused)
+  most-negative paused predict = -12.00 dB ; final (drive 24) = -12.00 dB
+Test 15: Mix feeds the predict; pause->Mix-up->play doesn't slam
+  dry match=-0.12 dB ; Mix100 steady peak=0.563 ; first played peak=0.590 (ratio 1.05)
+Test 16: Level Match holds its value on silence (measure waits)
+  converged=-4.30 dB ; after 1 s silence=-4.53 dB
+Test 17: Multiband crossover automation is Nyquist-safe (no explosion)
+  sr=44100  max|out|=1.814
+  sr=48000  max|out|=1.832
+  sr=96000  max|out|=1.504
+Test 18: Level Match reads ~0 at unity with Multiband ON
+  multiband-on unity match = -0.000 dB (expect ~0)
+Test 19: meters self-heal after a NaN/Inf burst
+  bright reading after recovery = -7.35 dB (expect ~ -6)
+Test 20: bypass toggling is clean (no burst; silent-in -> silent-out)
+  settled bypass silent-in tail = 0.00e+00 ; play-toggle max|out| = 2.020
+Test 21: Level Match keeps measuring while bypassed
+  match: active -5.62 dB  bypassed -5.62 dB
+Test 22: bypass crossfade is click-free and never mutes
+  max delta=0.0072 ; min block peak=0.125 (processed 0.125 .. bypass 0.25)
+Test 23: Multiband Enable crossfade is click-free and never mutes
+  max delta=0.0099 ; min block peak=0.200
+Test 24: Band Solo + Multiband Enable toggle is click-free
+  max delta=0.0147 ; min block peak=0.292
+Test 25: dry-align gate (H4) -- aggregate mono RMS through Mix re-entry
+  transition mono-sum RMS out/in = 0.999, settled = 1.000 (unaligned combs to <0.8)
+Test 26: a forced bulk swap (undo / A-B / preset) never dips to silence
+  continuous bulk swap (width/mix): min 2 ms window RMS across the swap = 0.931 of steady (pre-fix ~0)
+  algorithm bulk swap (velvet -> haas): min 2 ms window RMS across the swap = 0.651 of steady (pre-fix ~0)
+Test 27: rapid consecutive forced swaps re-evaluate dry-fill (no stale state)
+  neutral -> neutral (control): min 2 ms window RMS through swap2 = 0.930 of steady (stale-state engine ~0)
+  latency-cross -> neutral (re-enable dry-fill): min 2 ms window RMS through swap2 = 1.149 of steady (stale-state engine ~0)
+  neutral -> latency-cross during fade-IN (disable dry-fill, no wrong-offset read): min 2 ms window RMS through swap2 = 0.004 of steady (stale-state engine ~0)
+  neutral -> latency-cross during fade-OUT (tighten branch): min 2 ms window RMS through swap2 = 0.000 of steady (stale-state engine ~0)
+Test 28: multiband reconstruction is flat (no EQ dip at close crossovers)
+  4-band, three close splits (800/1000/1250)   worst deviation = -0.00 dB (pre-fix close splits combed to -17 dB)
+  4-band, very close (900/1000/1100)           worst deviation = -0.00 dB (pre-fix close splits combed to -17 dB)
+  4-band, wide (200/1000/5000)                 worst deviation = -0.00 dB (pre-fix close splits combed to -17 dB)
+  3-band (500/2000)                            worst deviation = -0.00 dB (pre-fix close splits combed to -17 dB)
+  2-band (single crossover)                    worst deviation = -0.00 dB (pre-fix close splits combed to -17 dB)
+Test 29: fast split drags do not pitch-shift (multiband + solo monitor)
+  multiband:    worst pitch deviation = 14.04 cents (uncapped: 28+, one-pole: ~50); max delta = 0.0049
+  crawl-cross:  worst pitch deviation = 14.00 cents (uncapped: 28+, one-pole: ~50); max delta = 0.0049
+  multiband:    max spur while the split crosses a 1 kHz tone = -41.3 dBc (chained fades: ~-26; threshold -31)
+  solo monitor: worst pitch deviation = 14.24 cents (uncapped: 28+, one-pole: ~50); max delta = 0.0049
+  convergence:  level 1.7-2.2 s after a 6-oct flick = 0.16 of full (1.25 oct/s follower: ~1.0)
+  discrete 4-oct jump: level at +200..350 ms = 1.00 of full (crawl would be ~0.004); max delta = 0.0326
+  normal drag:  solo band edge at +100..350 ms after release = 0.99 of full (flat 4 oct/s cap: ~0.5); max delta = 0.1287
+  normal drag:  multiband width-0 leak at +100..350 ms after release = 0.01 of the leak level (flat cap: ~0.9)
+Test 30: forced-swap dry fill respects extreme Output Gain (no spike)
+  steady peak at -24 dB = 0.0158 ; worst transition peak = 0.0158 (1.0x; raw-level fill spiked ~15x)
+Test 31: a forced swap during an ordinary fade-out keeps forced semantics
+  A: max |out| after the silent bottom (silent input) = 0.000000 (pre-fix 0.494: stale Haas tail replays)
+  B: max sample delta 0.0072 (sine slope ~0.0072); duck floor 0.000 of steady; recovery 0.996 of steady
+Test 32: high-rate crossover snap lands exactly (192 kHz float stall)
+  sr  44100: mb gaps +0.0000 +0.0000 +0.0000 Hz; solo gaps +0.0000 +0.0000 +0.0000 Hz; cold=1 (pre-fix @192k: 0.47/0.94/1.87 short, never cold)
+  sr  48000: mb gaps +0.0000 +0.0000 +0.0000 Hz; solo gaps +0.0000 +0.0000 +0.0000 Hz; cold=1 (pre-fix @192k: 0.47/0.94/1.87 short, never cold)
+  sr  96000: mb gaps +0.0000 +0.0000 +0.0000 Hz; solo gaps +0.0000 +0.0000 +0.0000 Hz; cold=1 (pre-fix @192k: 0.47/0.94/1.87 short, never cold)
+  sr 192000: mb gaps +0.0000 +0.0000 +0.0000 Hz; solo gaps +0.0000 +0.0000 +0.0000 Hz; cold=1 (pre-fix @192k: 0.47/0.94/1.87 short, never cold)
+  192k top zone: mb gap +0.0000 Hz; solo gap +0.0000 Hz; cold=1 (pre-fix: 3.75 short, never cold)
+Test 33: solo monitor stays cold through a no-solo split drag (Wave 3)
+Test 34: parked Haas passes through bit-untouched with WARM history (Wave 4)
+Test 35: Mono sum collapses the input to mono (stage-1 conditioning)
+  monoSum ON , side tone : ch0 0.0000 side 0.0000
+  monoSum ON , mono tone : ch0 0.3535 side 0.0000
+  monoSum OFF, side tone : ch0 0.3535 side 0.3535
+Test 36: M/S Solo isolates Mid/Side BEFORE the widening engine (#15)
+  Mid solo : mono 0.3536 side 0.0000 ; Side solo: side 0.3536 mono(amount=1) 0.0000
+Test 37: injected Level-Match trim is adopted on both consume paths (#23)
+  un-ducked seed after 1 block: -5.49 dB
+  re-converged after 200 blocks: -0.62 dB
+  forced-duck seed: lowest displayed over 40 blocks: -5.49 dB
+Test 38: the audio path allocates nothing (portable guard, ADR-0029)
+  guard liveness: operator new LIVE, aligned new LIVE, malloc family LIVE
+  3840 armed process() calls, 11 of them landing an observable structural switch; worst per call: new=0 malloc=0
+Test 39: Velvet's output is block-length- and transition-safe (A7-1, A7-2B)
+   44100 Hz: engaged stretch max |side change| = 0.9843
+   44100 Hz: post-stop |side change| = 0.2116, 21.5% of the engaged 0.9843
+   48000 Hz: engaged stretch max |side change| = 1.0231
+   48000 Hz: post-stop |side change| = 0.1574, 15.4% of the engaged 1.0231
+   96000 Hz: engaged stretch max |side change| = 1.0061
+   96000 Hz: post-stop |side change| = 0.2012, 20.0% of the engaged 1.0061
+  192000 Hz: engaged stretch max |side change| = 0.8365
+  192000 Hz: post-stop |side change| = 0.2106, 25.2% of the engaged 0.8365
+Test 40: Velvet's H5 gather is bit-identical to the per-sample loop (A7-2T)
+   44100 Hz: gathered max |side change| = 0.7463
+   48000 Hz: gathered max |side change| = 0.7209
+   96000 Hz: gathered max |side change| = 0.7397
+  192000 Hz: gathered max |side change| = 0.7783
+Test 41: A7-9 -- the parked fast paths are REACHED after an Amount ramp-down
+  VelvetNoise    48000 Hz  real-signal diff = 0.000000e+00  silence diff = 0.000000e+00  silence peak = 0.000000e+00  (ceiling 7.837e-36)
+  HaasProcessor  48000 Hz  real-signal diff = 0.000000e+00  silence diff = 0.000000e+00  silence peak = 0.000000e+00  (ceiling 1.175e-35)
+  ChorusEngine   48000 Hz  real-signal diff = 0.000000e+00  silence diff = 0.000000e+00  silence peak = 0.000000e+00  (ceiling 5.642e-36)
+  ChorusEngine  192000 Hz  real-signal diff = 0.000000e+00  silence diff = 0.000000e+00  silence peak = 0.000000e+00  (ceiling 2.257e-35)
+Test 42: A7-9 -- parked paths are BIT-EXACT identity on near-silent NONZERO input
+Test 43: a block beyond the prepared maximum is chunked, bit-exact vs sliced twin
+Test 44: re-prepare keeps a Mix=0 session bit-null from sample 0
+Test 45: correlation meter self-heals after a non-finite sample
+Test 50: extreme finite input does not break the phase meter (ER-DSP-10)
+  correlated mono: 4.0e9 -> fast 1.0000 | 5.0e9 -> fast 1.0000 (threshold |l| = 4.295e9)
+  anti-phase 1.0e10 -> fast -1.0000 slow -1.0000
+  decorrelated control -> fast 0.0000
+Test 51: extreme finite levels do not erase the channel balance (ER-DSP-11)
+  normal: balanced 0.0000 | L louder -0.6000 | R louder 0.6000
+  extreme unequal 1.8e19/1.0e19 -> balance -0.528504 (expected -0.528302)
+  extreme unequal 1.0e19/1.8e19 -> balance 0.528504 (expected 0.528302)
+  extreme balanced 1.5e19/1.5e19 -> balance 0.000000
+  extreme unequal 1.8e19/0.2e19 (sum does NOT overflow) -> balance -0.975616 (expected -0.975610)
+Test 46: input-conditioning semantics + character-parameter discrimination
+Test 49: a restored non-default session opens at its own sound (ER-DSP-09)
+Test 47: reset() clears the forced-duck flag (ER-DSP-07)
+  match gain: 0.000 dB before injection, -5.868 dB after one block
+Test 48: a duck requested while inactive does not fire on activation (ER-DSP-06 residual)
+  control side RMS (settled) = 0.107245
+  worst block 0: ducked/control SIDE RMS = 1.000000; blocks off level by >2%: 0 (0.0 ms)
+Test 52: reported latency follows the Oversampling factor alone (ADR-0034)
+  per-factor latency: Off=0 2x=4 4x=6 8x=6
+  2x: drive 6 -> 0 live, reported latency stayed in [4, 4] (expected 4)
+  4x: drive 6 -> 0 live, reported latency stayed in [6, 6] (expected 6)
+  8x: drive 6 -> 0 live, reported latency stayed in [6, 6] (expected 6)
+  2x, drive 0: reported 4, impulse peak at 4
+  4x, drive 0: reported 6, impulse peak at 6
+  8x, drive 0: reported 6, impulse peak at 6
+  2x, drive 0: |OS-selected output shifted by 4 - OS-off output| = 0.000e+00
+  4x, drive 0: |OS-selected output shifted by 6 - OS-off output| = 0.000e+00
+  8x, drive 0: |OS-selected output shifted by 6 - OS-off output| = 0.000e+00
+  2x bypassed, drive 6 -> 0: worst sample step over 16 phases 0.01440 (smooth bound 0.01440)
+  4x bypassed, drive 6 -> 0: worst sample step over 16 phases 0.01440 (smooth bound 0.01440)
+  8x bypassed, drive 6 -> 0: worst sample step over 16 phases 0.01440 (smooth bound 0.01440)
+  drive 0.4 -> 0 dB: OS Off keeps 0.9337 of its settled level (the control)
+  drive 0.4 -> 0 dB at 2x: keeps 0.9556 of settled (-0.4 dB)
+  drive 0.4 -> 0 dB at 4x: keeps 0.9616 of settled (-0.3 dB)
+  drive 0.4 -> 0 dB at 8x: keeps 0.9616 of settled (-0.3 dB)
+Test 53: a Drive crossing with Oversampling on matches the Oversampling-Off control
+  2x Haas   step  drive 0->6 : step x2.00 (control x2.00) | level 0.3754 (control 0.3745)
+  4x Haas   step  drive 0->6 : step x2.00 (control x2.00) | level 0.3758 (control 0.3745)
+  8x Haas   step  drive 0->6 : step x2.00 (control x2.00) | level 0.3758 (control 0.3745)
+  2x Haas   sweep drive 0->6 : step x2.00 (control x2.00) | level 0.3681 (control 0.3679)
+  4x Haas   sweep drive 0->6 : step x2.00 (control x2.00) | level 0.3682 (control 0.3679)
+  8x Haas   sweep drive 0->6 : step x2.00 (control x2.00) | level 0.3682 (control 0.3679)
+  2x Haas   step  drive 6->0 : step x0.96 (control x0.96) | level 0.2185 (control 0.2184)
+  4x Haas   step  drive 6->0 : step x0.96 (control x0.96) | level 0.2186 (control 0.2184)
+  8x Haas   step  drive 6->0 : step x0.96 (control x0.96) | level 0.2186 (control 0.2184)
+  2x Haas   sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2185 (control 0.2184)
+  4x Haas   sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2186 (control 0.2184)
+  8x Haas   sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2186 (control 0.2184)
+  2x Velvet step  drive 0->6 : step x1.89 (control x1.89) | level 0.3685 (control 0.3681)
+  4x Velvet step  drive 0->6 : step x1.89 (control x1.89) | level 0.3687 (control 0.3681)
+  8x Velvet step  drive 0->6 : step x1.89 (control x1.89) | level 0.3687 (control 0.3681)
+  2x Velvet sweep drive 0->6 : step x1.89 (control x1.89) | level 0.3677 (control 0.3676)
+  4x Velvet sweep drive 0->6 : step x1.89 (control x1.89) | level 0.3677 (control 0.3676)
+  8x Velvet sweep drive 0->6 : step x1.89 (control x1.89) | level 0.3677 (control 0.3676)
+  2x Velvet step  drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+  4x Velvet step  drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+  8x Velvet step  drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+  2x Velvet sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+  4x Velvet sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+  8x Velvet sweep drive 6->0 : step x1.00 (control x1.00) | level 0.2182 (control 0.2182)
+Test 54: switching Oversampling to Off does not lose the processing during the handoff
+  CONTROL Haas  +drive 2x -> 4x (wrap runs throughout) : settled H3/H1 0.288 | worst in window 0.288 | step x0.99
+  Haas  +drive 2x -> Off : processing 0.998 | level 0.991 | step x0.99 (control x0.99)
+  Haas  +drive 4x -> Off : processing 0.998 | level 0.991 | step x0.99 (control x0.99)
+  Haas  +drive 8x -> Off : processing 0.998 | level 0.991 | step x0.99 (control x0.99)
+  CONTROL Chorus+drive 2x -> 4x (wrap runs throughout) : settled H3/H1 0.348 | worst in window 0.052 | step x1.43
+  Chorus+drive 2x -> Off : processing 0.950 | level 0.969 | step x1.35 (control x1.43)
+  Chorus+drive 4x -> Off : processing 0.950 | level 0.969 | step x1.32 (control x1.43)
+  Chorus+drive 8x -> Off : processing 0.950 | level 0.969 | step x1.33 (control x1.43)
+Test 55: an inert discrete change does not open a duck
+  control: mbBands lane (audible) still ducks to -25.83 dB
+  control: dimMode lane under Dimensional still ducks to -24.66 dB
+  control: adopted-while-inert tail |moved-carried| = 0.000e+00, |moved-stale| = 1.215e+00
+Test 56: Multiband Enable does not step the dry source at partial Mix
+  block   64: worst step 1.53x the signal's own slew
+  block  128: worst step 1.58x the signal's own slew
+  block  256: worst step 1.54x the signal's own slew
+  block  512: worst step 1.48x the signal's own slew
+  block 1024: worst step 1.53x the signal's own slew
+  control: one band (A(dry) == dry) reads 1.43x
+Test 57: an algorithm change retargeted mid-fade-out still resets the modules
+  every pair, both block sizes, both retarget delays: routes identical
+Test 58: an inert dimMode move does not re-arm Level Match
+  R8 control: no change -- the ordinary silent drift moved 0.030446 dB -> analysis PRESERVED
+  R8: a plain Dimensional Style move under Haas      moved 0.030446 dB -> analysis PRESERVED
+  R8: dimMode alone through a FORCED duck            moved 0.030446 dB -> analysis PRESERVED
+  R8 control: a forced duck that changes nothing     moved 0.030446 dB -> analysis PRESERVED
+  R8: dimMode + Level Match toggled, one snapshot    moved 0.030446 dB -> analysis PRESERVED
+  R8 control: Level Match toggled alone              moved 0.030446 dB -> analysis PRESERVED
+  R8: dimMode WHILE Dimensional is active            moved 0.000630 dB -> analysis RE-ARMED
+  R8: switching TO Dimensional                       moved 0.000454 dB -> analysis RE-ARMED
+  R8: haasSide (reaches a module unconditionally)    moved 0.000454 dB -> analysis RE-ARMED
+  R8: dimMode riding a real discrete change          moved 0.000454 dB -> analysis RE-ARMED
+Test 59: a non-finite burst from the host self-heals (ADR-0009, F14)
+  Haas   OS off  Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.00 (within 0.1 dB from block +4)
+  Haas   OS 2x   Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.00 (within 0.1 dB from block +4)
+  Velvet OS off  Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.17 (within 0.1 dB from block +13)
+  Velvet OS 2x   Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.18 (within 0.1 dB from block +13)
+  Chorus OS off  Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.99
+  Chorus OS 2x   Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  0.80
+  Dimensional OS off  Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  1.80
+  Dimensional OS 2x   Level Match off: output finite 1, gain finite 1, worst |dB| vs twin  1.29
+  Haas   OS off  Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  0.54
+  Haas   OS 2x   Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  0.45
+  Velvet OS off  Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  0.75
+  Velvet OS 2x   Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  0.66
+  Chorus OS off  Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  1.78
+  Chorus OS 2x   Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  1.56
+  Dimensional OS off  Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  2.80
+  Dimensional OS 2x   Level Match on : output finite 1, gain finite 1, worst |dB| vs twin  2.62
+Test 59 extension: finite bypass readback through routing, endpoints and transitions (T-01)
+  block 1 OS 0 routing 0 input nan: nonfinite 0 control differences 0
+  block 1 OS 0 routing 0 input inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 0 input -inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 0 input 2: nonfinite 0 control differences 0
+  block 1 OS 0 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 0 routing 1 input nan: nonfinite 0 control differences 0
+  block 1 OS 0 routing 1 input inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 1 input -inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 1 input 2: nonfinite 0 control differences 0
+  block 1 OS 0 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 0 routing 2 input nan: nonfinite 0 control differences 0
+  block 1 OS 0 routing 2 input inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 2 input -inf: nonfinite 0 control differences 0
+  block 1 OS 0 routing 2 input 2: nonfinite 0 control differences 0
+  block 1 OS 0 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 1 routing 0 input nan: nonfinite 0 control differences 0
+  block 1 OS 1 routing 0 input inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 0 input -inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 0 input 2: nonfinite 0 control differences 0
+  block 1 OS 1 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 1 routing 1 input nan: nonfinite 0 control differences 0
+  block 1 OS 1 routing 1 input inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 1 input -inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 1 input 2: nonfinite 0 control differences 0
+  block 1 OS 1 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 1 routing 2 input nan: nonfinite 0 control differences 0
+  block 1 OS 1 routing 2 input inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 2 input -inf: nonfinite 0 control differences 0
+  block 1 OS 1 routing 2 input 2: nonfinite 0 control differences 0
+  block 1 OS 1 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 3 routing 0 input nan: nonfinite 0 control differences 0
+  block 1 OS 3 routing 0 input inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 0 input -inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 0 input 2: nonfinite 0 control differences 0
+  block 1 OS 3 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 3 routing 1 input nan: nonfinite 0 control differences 0
+  block 1 OS 3 routing 1 input inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 1 input -inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 1 input 2: nonfinite 0 control differences 0
+  block 1 OS 3 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 1 OS 3 routing 2 input nan: nonfinite 0 control differences 0
+  block 1 OS 3 routing 2 input inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 2 input -inf: nonfinite 0 control differences 0
+  block 1 OS 3 routing 2 input 2: nonfinite 0 control differences 0
+  block 1 OS 3 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 0 routing 0 input nan: nonfinite 0 control differences 0
+  block 64 OS 0 routing 0 input inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 0 input -inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 0 input 2: nonfinite 0 control differences 0
+  block 64 OS 0 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 0 routing 1 input nan: nonfinite 0 control differences 0
+  block 64 OS 0 routing 1 input inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 1 input -inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 1 input 2: nonfinite 0 control differences 0
+  block 64 OS 0 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 0 routing 2 input nan: nonfinite 0 control differences 0
+  block 64 OS 0 routing 2 input inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 2 input -inf: nonfinite 0 control differences 0
+  block 64 OS 0 routing 2 input 2: nonfinite 0 control differences 0
+  block 64 OS 0 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 1 routing 0 input nan: nonfinite 0 control differences 0
+  block 64 OS 1 routing 0 input inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 0 input -inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 0 input 2: nonfinite 0 control differences 0
+  block 64 OS 1 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 1 routing 1 input nan: nonfinite 0 control differences 0
+  block 64 OS 1 routing 1 input inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 1 input -inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 1 input 2: nonfinite 0 control differences 0
+  block 64 OS 1 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 1 routing 2 input nan: nonfinite 0 control differences 0
+  block 64 OS 1 routing 2 input inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 2 input -inf: nonfinite 0 control differences 0
+  block 64 OS 1 routing 2 input 2: nonfinite 0 control differences 0
+  block 64 OS 1 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 3 routing 0 input nan: nonfinite 0 control differences 0
+  block 64 OS 3 routing 0 input inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 0 input -inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 0 input 2: nonfinite 0 control differences 0
+  block 64 OS 3 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 3 routing 1 input nan: nonfinite 0 control differences 0
+  block 64 OS 3 routing 1 input inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 1 input -inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 1 input 2: nonfinite 0 control differences 0
+  block 64 OS 3 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 64 OS 3 routing 2 input nan: nonfinite 0 control differences 0
+  block 64 OS 3 routing 2 input inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 2 input -inf: nonfinite 0 control differences 0
+  block 64 OS 3 routing 2 input 2: nonfinite 0 control differences 0
+  block 64 OS 3 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 0 routing 0 input nan: nonfinite 0 control differences 0
+  block 512 OS 0 routing 0 input inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 0 input -inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 0 input 2: nonfinite 0 control differences 0
+  block 512 OS 0 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 0 routing 1 input nan: nonfinite 0 control differences 0
+  block 512 OS 0 routing 1 input inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 1 input -inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 1 input 2: nonfinite 0 control differences 0
+  block 512 OS 0 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 0 routing 2 input nan: nonfinite 0 control differences 0
+  block 512 OS 0 routing 2 input inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 2 input -inf: nonfinite 0 control differences 0
+  block 512 OS 0 routing 2 input 2: nonfinite 0 control differences 0
+  block 512 OS 0 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 1 routing 0 input nan: nonfinite 0 control differences 0
+  block 512 OS 1 routing 0 input inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 0 input -inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 0 input 2: nonfinite 0 control differences 0
+  block 512 OS 1 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 1 routing 1 input nan: nonfinite 0 control differences 0
+  block 512 OS 1 routing 1 input inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 1 input -inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 1 input 2: nonfinite 0 control differences 0
+  block 512 OS 1 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 1 routing 2 input nan: nonfinite 0 control differences 0
+  block 512 OS 1 routing 2 input inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 2 input -inf: nonfinite 0 control differences 0
+  block 512 OS 1 routing 2 input 2: nonfinite 0 control differences 0
+  block 512 OS 1 routing 2 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 3 routing 0 input nan: nonfinite 0 control differences 0
+  block 512 OS 3 routing 0 input inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 0 input -inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 0 input 2: nonfinite 0 control differences 0
+  block 512 OS 3 routing 0 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 3 routing 1 input nan: nonfinite 0 control differences 0
+  block 512 OS 3 routing 1 input inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 1 input -inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 1 input 2: nonfinite 0 control differences 0
+  block 512 OS 3 routing 1 input -1e-20: nonfinite 0 control differences 0
+  block 512 OS 3 routing 2 input nan: nonfinite 0 control differences 0
+  block 512 OS 3 routing 2 input inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 2 input -inf: nonfinite 0 control differences 0
+  block 512 OS 3 routing 2 input 2: nonfinite 0 control differences 0
+  block 512 OS 3 routing 2 input -1e-20: nonfinite 0 control differences 0
+Test 59 extension: wet self-heal preserves raw bypass samples and history (D-02)
+  block 1 OS 0 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 0 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 1 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 1 OS 3 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 0 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 1 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 64 OS 3 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 0 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 1 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 0 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 0 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input 1e+38: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input nan: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input -inf: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input 2: first unaffected mute 0, on/off/interior mismatches 0/0/0
+  block 512 OS 3 channel 1 Drive 6 input -1e-20: first unaffected mute 0, on/off/interior mismatches 0/0/0
+Test 59 extension: modulation-only oversampling executes during wet self-heal (D-02)
+  Chorus 2x: Drive off, latency 4, aligned response max difference 0.00165048061
+  Dimensional 2x: Drive off, latency 4, aligned response max difference 0.00165048061
+  Chorus 8x: Drive off, latency 6, aligned response max difference 0.00158878719
+  Dimensional 8x: Drive off, latency 6, aligned response max difference 0.00158878719
+  Chorus 2x bad-channel 0: wet guard sample 1, raw block/history exact 1/1
+  Chorus 2x bad-channel 1: wet guard sample 1, raw block/history exact 1/1
+  Dimensional 2x bad-channel 0: wet guard sample 1, raw block/history exact 1/1
+  Dimensional 2x bad-channel 1: wet guard sample 1, raw block/history exact 1/1
+  Chorus 8x bad-channel 0: wet guard sample 1, raw block/history exact 1/1
+  Chorus 8x bad-channel 1: wet guard sample 1, raw block/history exact 1/1
+  Dimensional 8x bad-channel 0: wet guard sample 1, raw block/history exact 1/1
+  Dimensional 8x bad-channel 1: wet guard sample 1, raw block/history exact 1/1
+Test 59 extension: self-heal preserves finite conditioned dry history (N2-04)
+  selected factor 2, bad channel 0, latency 4: observed heal 1, current/history 1/1
+  selected factor 2, bad channel 1, latency 4: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  actual wrapped algorithm 2 factor 2 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 2 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 2 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 2 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 4 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 4 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 4 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 4 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 8 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 8 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 8 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 8 bad channel 1: wrap/heal/history 1/1/1
+Test 60: the engaged oversampling wrap carries exactly the reported latency (PDC)
+   44.1 kHz 2x: reported 4 (skipped 4) | 300 Hz delay 4.0002 | 0.35 fs vs skipped +0.883
+   44.1 kHz 4x: reported 6 (skipped 6) | 300 Hz delay 5.9999 | 0.35 fs vs skipped +0.436
+   44.1 kHz 8x: reported 6 (skipped 6) | 300 Hz delay 6.0002 | 0.35 fs vs skipped +0.835
+   48.0 kHz 2x: reported 4 (skipped 4) | 300 Hz delay 4.0002 | 0.35 fs vs skipped +0.883
+   48.0 kHz 4x: reported 6 (skipped 6) | 300 Hz delay 5.9999 | 0.35 fs vs skipped +0.436
+   48.0 kHz 8x: reported 6 (skipped 6) | 300 Hz delay 6.0002 | 0.35 fs vs skipped +0.835
+   96.0 kHz 2x: reported 4 (skipped 4) | 300 Hz delay 4.0001 | 0.35 fs vs skipped +0.883
+   96.0 kHz 4x: reported 6 (skipped 6) | 300 Hz delay 6.0000 | 0.35 fs vs skipped +0.436
+   96.0 kHz 8x: reported 6 (skipped 6) | 300 Hz delay 6.0000 | 0.35 fs vs skipped +0.835
+Test 61: the scope ring hands the GUI the newest frames, oldest first
+  100 blocks of 441 frames, 2 of them straddling the ring's end: counts exact, frames newest, in order
+Test 62: the host reset's chorus re-seed -- after the flush, finite, modulation only
+  C1 forced swap, Chorus 0.3 -> 0.9     : after the host reset bit-identical to a fresh engine at the new settings
+  C2 ordinary duck, Haas -> Dimensional : after the host reset bit-identical to a fresh engine at the new settings
+  G  NaN Amount pending at the reset: 0 self-healed (all-zero) block(s) after it, output finite 1
+  H  Haas session host-reset, then switched to Chorus: bit-identical to the same session without the reset
+Test 63: a host reset inside a forced swap lands where the swap's bottom would
+  L1 Mix/Width/Output/balances/Drive/polarity on , reset @1 : bit-identical
+  L1 Mix/Width/Output/balances/Drive/polarity on , reset @64: bit-identical
+  L1 Mix/Width/Output/balances/Drive/polarity on , reset @289: bit-identical
+  L1 Mix/Width/Output/balances/Drive/polarity off, reset @1 : bit-identical
+  L1 Mix/Width/Output/balances/Drive/polarity off, reset @64: bit-identical
+  L1 Mix/Width/Output/balances/Drive/polarity off, reset @289: bit-identical
+  L2 Haas delay 12 -> 30 ms, reset @64                      : bit-identical
+  L2 Haas delay 20 -> 9 ms, reset @64                       : bit-identical
+  L3 multiband crossover + band width + Band Solo, reset @64: bit-identical
+  L4 Oversampling Off -> 2x + Drive 6 dB, reset @64         : bit-identical
+  L5 Haas -> Chorus with the smoothers, reset @64           : bit-identical
+  L5 Haas -> Dimensional with the smoothers, reset @64      : bit-identical
+  L6 ordinary duck upgraded to forced, reset in the fade-out: bit-identical
+  L6 forced swap re-armed from its fade-in, reset in the fade-out: bit-identical
+  L6 forced swap retargeted mid fade-out, reset             : bit-identical
+  A2 forced swap completed, then a host reset               : bit-identical
+  A3 host reset 10 ms into the forced fade-in               : bit-identical
+  A4 live Mix/Width/Output edit gliding at the reset        : bit-identical
+  A4 live Haas amount / Mono Maker cutoff edit gliding at the reset: bit-identical
+  A4 live Velvet density edit gliding at the reset          : bit-identical
+  A5 ordinary duck with live riders at the reset            : bit-identical
+  A7 unconsumed duck request before vs after the reset      : bit-identical
+Test 64: a non-finite glide target does not latch Mono Maker or the Velvet density (ADR-0009)
+  Mono Maker: bad at the first prepare         NaN             bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad at the first prepare         NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad at the first prepare         -NaN            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad at the first prepare         +Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 1.036
+  Mono Maker: bad at the first prepare         -Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.190
+  Mono Maker: live bad, then a re-prepare      NaN             bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.083
+  Mono Maker: live bad, then a re-prepare      NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.083
+  Mono Maker: live bad, then a re-prepare      -NaN            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.083
+  Mono Maker: live bad, then a re-prepare      +Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 1.093
+  Mono Maker: live bad, then a re-prepare      -Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.184
+  Mono Maker: bad while off, switched on       NaN             bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad while off, switched on       NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad while off, switched on       -NaN            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.147
+  Mono Maker: bad while off, switched on       +Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 1.041
+  Mono Maker: bad while off, switched on       -Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.192
+  Mono Maker: bad, re-prepare 96 -> 44.1 kHz   NaN             bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 1.049
+  Mono Maker: bad, re-prepare 96 -> 44.1 kHz   NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 1.049
+  Mono Maker: bad, re-prepare 96 -> 44.1 kHz   -NaN            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 1.049
+  Mono Maker: bad, re-prepare 96 -> 44.1 kHz   +Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 1.049
+  Mono Maker: bad, re-prepare 96 -> 44.1 kHz   -Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.916
+  Velvet density: live bad                     NaN             bit-identical to the twin, muted blocks   0/300, output finite 1, control moved 0.488
+  Velvet density: live bad                     NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/300, output finite 1, control moved 0.488
+  Velvet density: live bad                     -NaN            bit-identical to the twin, muted blocks   0/300, output finite 1, control moved 0.488
+  Velvet density: live bad                     +Inf            bit-identical to the twin, muted blocks   0/300, output finite 1, control moved 0.488
+  Velvet density: live bad                     -Inf            bit-identical to the twin, muted blocks   0/300, output finite 1, control moved 0.488
+  Velvet density: bad at the first prepare     NaN             bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.335
+  Velvet density: bad at the first prepare     NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.335
+  Velvet density: bad at the first prepare     -NaN            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.335
+  Velvet density: bad at the first prepare     +Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.335
+  Velvet density: bad at the first prepare     -Inf            bit-identical to the twin, muted blocks   0/260, output finite 1, control moved 0.335
+  Velvet density: live bad, then a re-prepare  NaN             bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.488
+  Velvet density: live bad, then a re-prepare  NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.488
+  Velvet density: live bad, then a re-prepare  -NaN            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.488
+  Velvet density: live bad, then a re-prepare  +Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.488
+  Velvet density: live bad, then a re-prepare  -Inf            bit-identical to the twin, muted blocks   0/320, output finite 1, control moved 0.488
+  Velvet density: bad mid-glide                NaN             bit-identical to the twin, muted blocks   0/303, output finite 1, control moved 0.342
+  Velvet density: bad mid-glide                NaN 0x7fc00001  bit-identical to the twin, muted blocks   0/303, output finite 1, control moved 0.342
+  Velvet density: bad mid-glide                -NaN            bit-identical to the twin, muted blocks   0/303, output finite 1, control moved 0.342
+  Velvet density: bad mid-glide                +Inf            bit-identical to the twin, muted blocks   0/303, output finite 1, control moved 0.342
+  Velvet density: bad mid-glide                -Inf            bit-identical to the twin, muted blocks   0/303, output finite 1, control moved 0.342
+Test 65: a sustained non-finite input burst does not silence the output with Level Match on (ADR-0009)
+  Haas   OS off: silent burst blocks  Level Match off   0 / on   0 of 187;  burst level off -13.71 dB, on -18.83 dB (pre-burst match -5.12 dB)
+  Haas   OS 2x : silent burst blocks  Level Match off   2 / on   2 of 187;  burst level off -21.83 dB, on -26.81 dB (pre-burst match -4.99 dB)
+  Velvet OS off: silent burst blocks  Level Match off   0 / on   0 of 187;  burst level off -12.74 dB, on -19.71 dB (pre-burst match -6.97 dB)
+  Velvet OS 2x : silent burst blocks  Level Match off   2 / on   2 of 187;  burst level off -20.66 dB, on -27.48 dB (pre-burst match -6.82 dB)
+  Chorus OS off: silent burst blocks  Level Match off   0 / on   0 of 187;  burst level off -13.81 dB, on -15.73 dB (pre-burst match -1.92 dB)
+  Chorus OS 2x : silent burst blocks  Level Match off   2 / on   2 of 187;  burst level off -21.02 dB, on -23.50 dB (pre-burst match -2.49 dB)
+Test 66: Level Match engages at the level it measured when the switch changes only its gain (ADR-0007)
+  duck timing, derived from the engine's output             : bottom event+2, first full-level block event+8 (documented: +2 / +8)
+  (1) Undo of Apply, forced, Drive 8 (m -5.93)              : pub_F  -6.04  D_F +0.003  max|D| 0.010  excursion +0.000  resid 3.3e-10  phi 0.001
+  (3) hand re-engage after Apply, ordinary (Output Gain m)  : pub_F  -6.04  D_F +0.004  max|D| 0.012  excursion +0.000  resid 3.5e-10  phi 0.001
+  (3) hand engage, ordinary, from Output Gain -12           : pub_F  -6.04  D_F +0.004  max|D| 0.012  excursion +0.012  resid 3.5e-10  phi 0.001
+  (3) hand engage, ordinary, from Output Gain +0            : pub_F  -6.04  D_F +0.004  max|D| 0.012  excursion +0.000  resid 3.5e-10  phi 0.001
+  (3) hand engage, ordinary, from Output Gain +6            : pub_F  -6.04  D_F +0.004  max|D| 0.012  excursion +0.000  resid 3.5e-10  phi 0.001
+  (3) hand re-engage 4 blocks into a dirty disengage's fade-in: pub_F  -6.04  D_F +0.004  max|D| 0.011  excursion +0.000  resid 3.5e-10  phi 0.001
+  (6) A/B shape, injection m-5 dB                           : bit-identical to the Level-Match-on twin from event+8; D_F -1.844 dB
+  (6) A/B shape, injection m+4 dB                           : bit-identical to the Level-Match-on twin from event+8; D_F +1.664 dB
+  (6) ordinary engage, injection m-5 dB at its bottom block : bit-identical to the Level-Match-on twin from event+8; D_F -1.839 dB
+  (7) Redo (forced on->off) / Apply (ordinary on->off)      : bit-identical to the twin already off from event+8 / event+8
+  (9) host reset one block into the fade-out                : bit-identical to the Level-Match-on-both reset from event+1; max|D| 0.012 dB
+  (9) host reset one block into the fade-in                 : bit-identical to the Level-Match-on-both reset from event+3; max|D| 0.012 dB
+  (1) Undo of Apply, forced, Drive 4 (m -3.69)              : pub_F  -3.76  D_F +0.002  max|D| 0.007  excursion +0.000  resid 2.0e-10  phi 0.001
+  (1) Undo of Apply, forced, Drive 10 (m -7.01)             : pub_F  -7.13  D_F +0.004  max|D| 0.014  excursion +0.000  resid 4.3e-10  phi 0.001
+  (2) Undo of Apply, forced, positive match (Width 0) (m +7.36): pub_F  +7.58  D_F -0.008  max|D| 0.027  excursion +0.000  resid 2.1e-09  phi 0.001
+  (3) ordinary engage + Output Gain/Balance, Band Solo, Bypass: pub_F  -7.66  D_F +0.007  max|D| 0.020  excursion +0.024  resid 1.9e-09  phi 0.001
+  (4) 1 ulp / 2e-6: width haasDelay amount balance 3 xover 4 mbWidth MM (+): pub_F  -6.32  D_F +0.002  max|D| 0.008  excursion +0.000  resid 1.8e-10  phi 0.000
+  (4) 1 ulp / 2e-6: width haasDelay amount balance 3 xover 4 mbWidth MM (-): pub_F  -6.32  D_F +0.002  max|D| 0.008  excursion +0.000  resid 9.3e-11  phi 0.000
+  (4) +/-1 ulp under Chorus: rate depth width amount balance (+): pub_F  -4.86  D_F +0.003  max|D| 0.006  excursion +0.000  resid 6.6e-11  phi 0.001
+  (4) +/-1 ulp under Chorus: rate depth width amount balance (-): pub_F  -4.86  D_F +0.003  max|D| 0.006  excursion +0.000  resid 6.6e-11  phi 0.001
+  (4) +/-1 ulp under Velvet: density width amount balance (+): pub_F  -8.12  D_F +0.006  max|D| 0.018  excursion +0.000  resid 8.4e-10  phi 0.001
+  (4) +/-1 ulp under Velvet: density width amount balance (-): pub_F  -8.12  D_F +0.006  max|D| 0.018  excursion +0.000  resid 8.4e-10  phi 0.001
+  (5) forced + Drive +0.01 dB                               : pub_F  -5.43  D_F +4.331  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Drive +0.01 dB              : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.6e-05
+  (5) forced + Drive +1 ulp                                 : pub_F  -5.43  D_F +4.331  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Drive +1 ulp                : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.6e-05
+  (5) forced + Width +0.001                                 : pub_F  -5.43  D_F +4.331  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Width +0.001                : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.6e-05
+  (5) forced + Mix -0.001                                   : pub_F  -5.43  D_F +4.331  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Mix -0.001                  : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.6e-05
+  (5) forced + Mix -1 ulp                                   : pub_F  -5.43  D_F +4.331  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Mix -1 ulp                  : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.6e-05
+  (5) forced + algorithm Haas->Velvet                       : pub_F  -5.45  D_F +4.350  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + algorithm Haas->Velvet      : pub_F  -5.45  D_F +4.351  phi 0.798  resid 2.6e-05
+  (5) forced + M/S solo Mid                                 : pub_F  -5.39  D_F +4.299  phi 0.797  resid 2.5e-05
+  (5) ordinary, same snapshot + M/S solo Mid                : pub_F  -5.41  D_F +4.315  phi 0.798  resid 2.5e-05
+  (5) forced + msMode on                                    : pub_F  -5.44  D_F +4.338  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + msMode on                   : pub_F  -5.45  D_F +4.348  phi 0.798  resid 2.6e-05
+  (5) forced + mbBands 4->3, Multiband on                   : pub_F  -5.42  D_F +4.321  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + mbBands 4->3, Multiband on  : pub_F  -5.43  D_F +4.333  phi 0.798  resid 2.6e-05
+  (5) forced + Mono Maker on                                : pub_F  -5.42  D_F +4.320  phi 0.798  resid 2.5e-05
+  (5) ordinary, same snapshot + Mono Maker on               : pub_F  -5.43  D_F +4.332  phi 0.798  resid 2.5e-05
+  (5) forced + Oversampling Off->2x                         : pub_F  -5.39  D_F +4.298  phi 0.797  resid 2.6e-05
+  (5) ordinary, same snapshot + Oversampling Off->2x        : pub_F  -5.41  D_F +4.312  phi 0.797  resid 2.6e-05
+  (5) forced + Drive 8->10                                  : pub_F  -5.43  D_F +4.335  phi 0.798  resid 2.6e-05
+  (5) ordinary, same snapshot + Drive 8->10                 : pub_F  -5.43  D_F +4.336  phi 0.798  resid 2.6e-05
+  (5) ordinary; Drive 8->10 arrives mid-fade-out            : pub_F  -5.43  D_F +4.335  phi 0.798  resid 2.6e-05
+  (5) ordinary; Drive 8->10->8 mid-fade-out, back before the bottom: pub_F  -5.43  D_F +4.333  phi 0.798  resid 2.6e-05
+  (5) ordinary Drive 8->10 + engage, upgraded to forced at +1: pub_F  -5.43  D_F +4.338  phi 0.798  resid 2.6e-05
+  (5) forced + Haas side under Velvet (re-arms)             : pub_F  -6.38  D_F +5.136  phi 0.806  resid 3.5e-05
+  (5) ordinary, same snapshot + Haas side under Velvet (re-arms): pub_F  -6.42  D_F +5.179  phi 0.806  resid 3.5e-05
+  (5) forced + mbBands 4->3, Multiband off (re-arms)        : pub_F  -6.38  D_F +5.136  phi 0.806  resid 3.5e-05
+  (5) ordinary, same snapshot + mbBands 4->3, Multiband off (re-arms): pub_F  -6.42  D_F +5.179  phi 0.806  resid 3.5e-05
+  (11) ordinary engage, input turns correlated 1 blk before : pub(bot) +21.74  step -0.656  D(bot) +0.000  resid 1.5e-15 | D(bot+1) +0.657  D_F +3.583
+  (11) ordinary engage, input turns correlated 2 blk before : pub(bot) +21.01  step -0.682  D(bot) +0.000  resid 1.5e-15 | D(bot+1) +0.666  D_F +3.521
+  (8) Level Match on both sides, forced Drive 0->10         : pre  -0.70  pub_F  -3.61  D_F +2.196  phi 0.755  resid 8.7e-06
+  (10) sweep base H: 12 inert and 19 measurement-reading real changes (post-tap rows apart); min |pub_F| 5.25 dB
+  (10) sweep base C: 3 inert and 28 measurement-reading real changes (post-tap rows apart); min |pub_F| 4.45 dB
+  (10) sweep base M: 6 inert and 3 measurement-reading real changes (post-tap rows apart); min |pub_F| 5.32 dB
+  (10) sweep base M2: 4 inert and 5 measurement-reading real changes (post-tap rows apart); min |pub_F| 5.32 dB
+  (10) sweep base M3: 2 inert and 7 measurement-reading real changes (post-tap rows apart); min |pub_F| 5.31 dB
+  (10) channelMode     H: moves 1e-01 glide phi  0.797 | C: moves 3e-01 glide phi  0.791 | M: - | M2: - | M3: -
+  (10) monoSum         H: moves 6e-02 glide phi  0.796 | C: moves 2e-01 glide phi  0.791 | M: - | M2: - | M3: -
+  (10) swapLR          H: moves 1e-01 glide phi  0.795 | C: moves 5e-02 glide phi  0.791 | M: - | M2: - | M3: -
+  (10) inputBalance    H: moves 3e-03 glide phi  0.797 | C: moves 1e-02 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) polarityL       H: moves 2e-02 glide phi  0.797 | C: moves 4e-02 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) polarityR       H: moves 2e-02 glide phi  0.797 | C: moves 4e-02 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) msMode          H: moves 2e-02 glide phi  0.797 | C: moves 2e-02 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) driveDb         H: moves 1e-02 glide phi  0.797 | C: moves 1e+00 glide phi  0.797 | M: - | M2: - | M3: -
+  (10) algorithm       H: moves 7e-02 glide phi  0.797 | C: moves 8e-01 glide phi  0.802 | M: - | M2: - | M3: -
+  (10) algoAmount      H: moves 4e-03 glide phi  0.797 | C: moves 5e-03 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) haasDelayMs     H: moves 9e-04 glide phi  0.796 | C: inert        LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) haasSide        H: moves 1e-01 glide phi  0.795 | C: moves 5e-02 glide phi  0.790 | M: - | M2: - | M3: -
+  (10) velvetDensity   H: inert        LANDS phi  0.005 | C: inert        LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) chorusRate      H: inert        LANDS phi  0.005 | C: moves 4e-04 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) chorusDepth     H: inert        LANDS phi  0.005 | C: moves 5e-04 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) dimMode         H: inert        LANDS phi  0.005 | C: inert        LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) width           H: moves 1e-02 glide phi  0.797 | C: moves 9e-03 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) mbEnable        H: moves 1e-02 glide phi  0.796 | C: moves 2e-01 glide phi  0.790 | M: moves 1e-02 glide phi  0.796 | M2: moves 1e-02 glide phi  0.796 | M3: moves 1e-02 glide phi  0.796
+  (10) mbBands         H: moves 1e-02 glide phi  0.796 | C: moves 2e-01 glide phi  0.790 | M: moves 1e-02 glide phi  0.796 | M2: moves 1e-02 glide phi  0.796 | M3: moves 1e-02 glide phi  0.796
+  (10) mbSolo          H: inert        LANDS phi  0.005 | C: inert        LANDS phi -0.001 | M: inert        LANDS phi  0.005 | M2: inert        LANDS phi  0.005 | M3: inert        LANDS phi  0.005
+  (10) mbFreqLow       H: inert        LANDS phi  0.005 | C: moves 2e-05 glide phi  0.788 | M: inert        LANDS phi  0.005 | M2: moves 4e-06 glide phi  0.796 | M3: moves 1e-05 glide phi  0.797
+  (10) mbFreqMid       H: inert        LANDS phi  0.005 | C: moves 6e-06 glide phi  0.788 | M: inert        LANDS phi  0.005 | M2: inert        LANDS phi  0.005 | M3: moves 5e-06 glide phi  0.797
+  (10) mbFreqHigh      H: inert        LANDS phi  0.005 | C: moves 1e-05 glide phi  0.788 | M: inert        LANDS phi  0.005 | M2: inert        LANDS phi  0.005 | M3: inert        LANDS phi  0.005
+  (10) mbWidthLow      H: inert        LANDS phi  0.005 | C: moves 3e-05 glide phi  0.788 | M: moves 4e-02 glide phi  0.797 | M2: moves 5e-05 glide phi  0.796 | M3: moves 5e-05 glide phi  0.797
+  (10) mbWidthMid      H: inert        LANDS phi  0.005 | C: moves 5e-04 glide phi  0.788 | M: inert        LANDS phi  0.005 | M2: moves 4e-02 glide phi  0.797 | M3: moves 5e-04 glide phi  0.797
+  (10) mbWidthHiMid    H: inert        LANDS phi  0.005 | C: moves 3e-03 glide phi  0.788 | M: inert        LANDS phi  0.005 | M2: inert        LANDS phi  0.005 | M3: moves 4e-02 glide phi  0.797
+  (10) mbWidthHigh     H: inert        LANDS phi  0.005 | C: moves 2e-02 glide phi  0.789 | M: inert        LANDS phi  0.005 | M2: inert        LANDS phi  0.005 | M3: inert        LANDS phi  0.005
+  (10) monoMakerEnable H: moves 1e-02 glide phi  0.796 | C: moves 5e-02 glide phi  0.790 | M: - | M2: - | M3: -
+  (10) monoMakerFreq   H: inert        LANDS phi  0.005 | C: moves 2e-05 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) mix             H: moves 2e-02 glide phi  0.796 | C: moves 2e-02 glide phi  0.788 | M: - | M2: - | M3: -
+  (10) outputGainDb    H: inert        LANDS phi  0.005 | C: inert        LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) outputBalance   H: inert        LANDS phi  0.005 | C: inert        LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) autoGainMatch   H: inert        LANDS phi  0.005 | C: moves 2e-04 LANDS phi -0.001 | M: - | M2: - | M3: -
+  (10) solo            H: moves 6e-02 glide phi  0.796 | C: moves 2e-01 glide phi  0.791 | M: - | M2: - | M3: -
+  (10) oversample      H: moves 5e-02 glide phi  0.796 | C: moves 4e-02 glide phi  0.789 | M: - | M2: - | M3: -
+  (10) bypass          H: inert        LANDS phi  0.005 | C: moves 2e-04 LANDS phi -0.001 | M: - | M2: - | M3: -
+  allocation guard: 2916 armed setParameters+process calls (event to first full-level block), 55 of 55 landings observed inside them; worst per call: new=0 malloc=0
+Test 67: an A/B injection re-arms the Level-Match analysis when the slots differ in what it reads; a same-rate re-prepare keeps the result (ADR-0007, F13(2))
+  (1) channelMode     | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) monoSum         | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) swapLR          | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) inputBalance    | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) polarityL       | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) polarityR       | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) msMode          | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) driveDb         | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) algorithm       | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) algoAmount      | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) haasDelayMs     | H meas 0.00 HOLD | V off  2.72 move | C off  3.98 move | D off  4.67 move
+  (1) haasSide        | H m+p  0.00 HOLD | V path 0.00 HOLD | C path 0.00 HOLD | D path 0.00 HOLD
+  (1) velvetDensity   | H off  2.87 move | V meas 0.00 HOLD | C off  3.98 move | D off  4.67 move
+  (1) chorusRate      | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) chorusDepth     | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) dimMode         | H off  2.87 move | V off  2.72 move | C off  3.98 move | D m+p  0.00 HOLD
+  (1) width           | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) mbEnable        | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) mbBands         | H path 0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) mbSolo          | H post 2.87 move | V post 2.72 move | C post 3.98 move | D post 4.67 move
+  (1) mbFreqLow       | H off  2.87 move | V meas 0.00 HOLD | C meas 0.00 HOLD | D off  4.67 move
+  (1) mbFreqMid       | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) mbFreqHigh      | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) mbWidthLow      | H off  2.87 move | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) mbWidthMid      | H off  2.87 move | V meas 0.00 HOLD | C meas 0.00 HOLD | D off  4.67 move
+  (1) mbWidthHiMid    | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) mbWidthHigh     | H off  2.87 move | V off  2.72 move | C meas 0.00 HOLD | D off  4.67 move
+  (1) monoMakerEnable | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) monoMakerFreq   | H off  2.87 move | V meas 0.00 HOLD | C off  3.98 move | D meas 0.00 HOLD
+  (1) mix             | H meas 0.00 HOLD | V meas 0.00 HOLD | C meas 0.00 HOLD | D meas 0.00 HOLD
+  (1) outputGainDb    | H post 2.87 move | V post 2.72 move | C post 3.98 move | D post 4.67 move
+  (1) outputBalance   | H post 2.87 move | V post 2.72 move | C post 3.98 move | D post 4.67 move
+  (1) autoGainMatch   | H post 2.87 move | V post 2.72 move | C post 3.98 move | D post 4.67 move
+  (1) solo            | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) oversample      | H m+p  0.00 HOLD | V m+p  0.00 HOLD | C m+p  0.00 HOLD | D m+p  0.00 HOLD
+  (1) bypass          | H post 2.87 move | V post 2.72 move | C post 3.98 move | D post 4.67 move
+  (1) identical slot  | H --   2.87 move | V --   2.72 move | C --   3.98 move | D --   4.67 move
+  (1) move: the largest change of the published value over the 0.3 s of silence after the bottom (dB); largest on a HOLD row 0.0e+00, smallest on a move row 2.72
+  (1b) injection above the Drive-8 predict floor: -4.9606 -> bottom -0.5000 (v -0.5000), then silence moves 0.0e+00 dB
+  (2) A/B Drive 2 -> 8, inject the fresh -6.08      : pub(bot-1)  -2.78 pub(bot)  -6.08 | max|D| 0.018  max|g_out| 0.017 (resid 7.3e-10) | silence twin max|pub-v| 0.0e+00
+  (2) A/B Drive 8 -> 2, inject the fresh -2.78      : pub(bot-1)  -6.08 pub(bot)  -2.78 | max|D| 0.015  max|g_out| 0.012 (resid 5.7e-10) | silence twin max|pub-v| 0.0e+00
+  (3) A/B Drive 0 -> 10, inject the fresh -7.19     : pub(bot-1)  -0.02 pub(bot)  -7.18 | max|D| 0.019  max|g_out| 0.016 (resid 9.2e-10) | silence twin max|pub-v| 0.0e+00
+  (3) forced Drive 0 -> 10, no injection            : vs live max|D| 0.742 from the bottom, 0.348 from full level; forced / live - fresh at 0.1/0.5/1/2 s +4.01/+4.33 +3.08/+3.02 +1.92/+1.99 +0.69/+0.71 | silence probe move 3.13 (predict floor at the bottom)
+  (3) A/B Drive 10 -> 0, inject the fresh -0.02     : pub(bot-1)  -7.19 pub(bot)  -0.01 | max|D| 0.014  max|g_out| 0.012 (resid 3.1e-10) | silence twin max|pub-v| 0.0e+00
+  (3) forced Drive 10 -> 0, no injection            : vs live max|D| 0.167 from the bottom, 0.167 from full level; forced / live - fresh at 0.1/0.5/1/2 s -7.12/-7.12 -5.43/-5.43 -3.25/-3.24 -1.35/-1.34 | silence probe move 1.88 (displaced 6 dB first)
+  (4) upgrade; Drive 8->10 went live mid-fade-out         : injected -10.95 at bot+0, pub there -10.95 | move 0.00 HOLD
+  (4) upgrade; Drive 8->10 in the upgrading snapshot      : injected -10.95 at bot+0, pub there -10.95 | move 0.00 HOLD
+  (4) upgrade; nothing the measurement reads              : injected -10.95 at bot+0, pub there -10.55 | move 2.88 move
+  (4) defensive; Level Match off + Drive 10, inject at bottom: injected -11.03 at bot+0, pub there -11.03 | move 0.00 HOLD
+  (4) defensive; Level Match off only, inject at bottom   : injected -10.96 at bot+0, pub there -10.55 | move 2.88 move
+  (4) defensive; the dirty duck, inject at bottom-1       : injected -11.02 at bot-1, pub there -10.61 | move 2.93 move
+  (4) defensive; the dirty duck, inject at bottom+1       : injected -11.04 at bot+1, pub there -10.62 | move 2.92 move
+  (4) no duck; Drive 8->10 live, inject 2 blocks later    : injected -11.03 at bot+0, pub there -10.62 | move 2.92 move
+  (5) same rate and block, audible: published -6.0838 -> -6.0838 across the re-prepare (bit-identical: yes); first block applied -6.080 vs fresh pub -6.084
+  (5)   over 3 s: max|pub - fresh| 0.019  max|applied - fresh pub| 0.025 (twin resid 2.0e-10)  max|g_out vs fresh| 0.017 from block 3 (resid 7.3e-10)
+  (5) same rate, block 256                    : published +0.4478 -> +0.4478 -> first block +0.4478 (bit-identical: yes); then silence moves 0.0e+00 dB
+  (5) same rate, block 256 -> 512             : published +0.4478 -> +0.4478 -> first block +0.4478 (bit-identical: yes); then silence moves 0.0e+00 dB
+  (5) same rate, primed Output Gain -6 dB     : published +0.4478 -> +0.4478 -> first block +0.4478 (bit-identical: yes); then silence moves 0.0e+00 dB
+  (5) control: no re-prepare                  : silence moves 4.60 dB (the analysis still live)
+  (5) 48 -> 44.1 kHz                          : published -4.9450 -> +0.0000; then -4.067, -4.077 ... bit-identical to a first prepare there: yes
+  (5) primed Drive 8 -> 10                    : published -4.9450 -> +0.0000; then -5.025, -5.035 ... bit-identical to a first prepare there: yes
+  (5) first prepare at 44.1 kHz: primed with the sound -4.0675 -> -5.8140; default, then the sound -3.7482 -> -5.7977 (|diff| 0.016 dB)
+  allocation guard: 664 armed setParameters+process calls (legs 1-4: event to bottom+1); worst per call: new=0 malloc=0
+Test 68: a kept Level-Match result is the applied gain from the first block after a same-rate re-prepare, at any input level (ADR-0007, F13(2) Q5)
+  (1)(3)(4) Drive 8, -70 dBFS (the review's example)  : published -6.0873 -> -6.0873 (kept: yes) | applied: first -6.0873 (D +0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 7.9e-16 (settled 7.5e-16) end -6.087 | input ms 1.5e-07
+  (3)(4) Drive 8, -90 dBFS                            : published -6.0873 -> -6.0873 (kept: yes) | applied: first -6.0873 (D -0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 8.3e-16 (settled 8.3e-16) end -6.087 | input ms 1.5e-09
+  (3)(4) Drive 8, -125 dBFS                           : published -6.0873 -> -6.0873 (kept: yes) | applied: first -6.0873 (D +0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 7.8e-16 (settled 7.4e-16) end -6.087 | input ms 4.6e-13
+  (5) Drive 20, -90 dBFS (large)                      : published -10.4143 -> -10.4143 (kept: yes) | applied: first -10.4143 (D +0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 7.9e-16 (settled 7.1e-16) end -10.414 | input ms 1.5e-09
+  (5) Drive 24, -125 dBFS (larger)                    : published -10.9466 -> -10.9466 (kept: yes) | applied: first -10.9466 (D -0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 8.1e-16 (settled 7.4e-16) end -10.947 | input ms 4.6e-13
+  (5) Drive 2, -70 dBFS (small)                       : published -2.7876 -> -2.7876 (kept: yes) | applied: first -2.7876 (D -0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 7.7e-16 (settled 7.7e-16) end -2.788 | input ms 1.5e-07
+  (2) Width 0 on anti-correlated input, -70 dBFS      : published +7.7092 -> +7.7092 (kept: yes) | applied: first +7.7092 (D +0.0000)  max|D| 0.0000  LS max|D| 0.0000  resid 8.2e-16 (settled 7.6e-16) end +7.709 | input ms 1.6e-07
+  (1) Drive 8, -70 dBFS: retained -6.0873; applied at 0 / 10 / 30 / 60 / 120 ms: -6.087 -6.087 -6.087 -6.087 -6.087 dB
+  (1) the first resumed block's output energy: re-prepared 5.08e-05, no-re-prepare control 3.69e+00 (48.6 dB above: the loud Haas tail the re-prepare cleared)
+  (10) host reset 3 blocks after the kept re-prepare  : applied vs the same lane without the reset max|diff| 8.3e-07 dB; vs the kept value 0.0000 dB; output changed at the reset: yes
+  (6) Level Match off, kept; Case-B engage (Drive 8->10): published -4.9348 kept (yes); pub_F -5.016  applied_F -1.178  phi 0.765  resid 4.3e-05
+  (6) Level Match off, kept; Case-A engage (alone)    : from the bottom block max|D| 0.0000  (first -4.9348 vs -4.9348)
+  (7) 48 -> 44.1 kHz, -70 dBFS                        : published -4.9348 -> +0.0000, first block -4.0572 | applied: first -0.0006  60 ms -1.794 (phi 0.44)  end -4.057 | at 0/10/30/60/120 ms -0.001 -0.275 -0.851 -1.794 -4.057
+  (7) 48 -> 44.1 kHz, -90 dBFS                        : published -4.9348 -> +0.0000, first block -4.0572 | applied: first -0.0006  60 ms -1.794 (phi 0.44)  end -4.057 | at 0/10/30/60/120 ms -0.001 -0.275 -0.851 -1.794 -4.057
+  (7) 48 -> 44.1 kHz, -125 dBFS                       : published -4.9348 -> +0.0000, first block -4.0572 | applied: first -0.0006  60 ms -1.794 (phi 0.44)  end -4.057 | at 0/10/30/60/120 ms -0.001 -0.275 -0.851 -1.794 -4.057
+  (7) 48 -> 44.1 kHz, the pre-roll's level (loud)     : published -4.9348 -> +0.0000, first block -4.0674 | applied: first -4.0674  60 ms -4.090 (phi 1.01)  end -4.201 | at 0/10/30/60/120 ms -4.067 -4.068 -4.073 -4.090 -4.150
+  (8a) +Inf injected, Level Match off -> NaN          : published -nan -> +0.0000, first block -4.0572 | applied at the first sample -0.0006  at 60 ms -1.795
+  (8b) NaN burst, self-heal, re-prepare               : published +0.0000 -> +0.0000, first block -4.0572 | applied at the first sample -0.0006  at 60 ms -1.795
+  (8c) primed Drive 8 -> 10                           : published -4.9348 -> +0.0000, first block -5.0156 | applied at the first sample -0.0007  at 60 ms -2.152
+  (9) un-ducked injection in the first block          : injected -9.9348 (kept -4.9348); published holds it: yes; applied first -9.9348  max|D| 0.0000
+  (9) A/B shape (requestDuck + inject) in the first block: injected -0.9348 (kept -4.9348); published from the bottom: yes; applied from full level max|D| 0.0000
+  (11) unprimed, a Match-on duck in flight at prepare(): published -4.9348 -> -4.9348 (kept: yes) | applied: first -4.9348  max|D| 0.0000  LS max|D| 0.0000
+Test 69: a same-rate re-prepare keeps the Level-Match result only while it is current -- an edit the measure has not caught up with flushes like a restore (ADR-0007, F13(2) Q5)
+  (1a) Drive 8 -> 12 (an exact predict input, rising)                   : A -5.521 (moved 0.0019) | B fresh -7.612, published -6.000 at the prepare (1.61 behind); edit heard at -26.5 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1b) Drive 8 -> 2 (falling)                                           : A -5.521 (moved 0.0019) | B fresh -2.153, published -5.521 at the prepare (3.37 behind); edit heard at -27.1 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1c) Mix 1 -> 0.5                                                     : A -5.521 (moved 0.0019) | B fresh -3.033, published -5.521 at the prepare (2.49 behind); edit heard at -27.5 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1d) Width 1.0 -> 2.0 (the Devin review's case)                       : A -5.521 (moved 0.0019) | B fresh -7.797, published -5.521 at the prepare (2.28 behind); edit heard at -22.6 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1e) Amount 0.5 -> 1.0                                                : A -5.521 (moved 0.0019) | B fresh -6.323, published -5.521 at the prepare (0.80 behind); edit heard at -23.9 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1f) Input Balance 0 -> +0.8                                          : A -5.521 (moved 0.0019) | B fresh -4.590, published -5.521 at the prepare (0.93 behind); edit heard at -22.4 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1g) Haas Delay 12 -> 30 ms, Haas (programme T)                       : A -5.713 (moved 0.0046) | B fresh +0.829, published -5.713 at the prepare (6.54 behind); edit heard at -2.9 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1h) Velvet Density 0.5 -> 0.15, Velvet (T)                           : A -5.075 (moved 0.0012) | B fresh -4.456, published -5.075 at the prepare (0.62 behind); edit heard at -16.9 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1i) Chorus Depth 0.5 -> 0, Chorus at 5 Hz (T)                        : A -2.628 (moved 0.0015) | B fresh -0.589, published -2.628 at the prepare (2.04 behind); edit heard at -3.5 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1j) Multiband band-4 width 1 -> 2                                    : A -5.521 (moved 0.0019) | B fresh -7.602, published -5.521 at the prepare (2.08 behind); edit heard at -24.2 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1k) Multiband split 3, 3 -> 10 kHz (band 4 at width 2)               : A -7.602 (moved 0.0027) | B fresh -6.984, published -7.602 at the prepare (0.62 behind); edit heard at -9.3 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1l) Mono Maker Freq 120 -> 500 Hz, Mono Maker on (T)                 : A -5.545 (moved 0.0046) | B fresh -3.596, published -5.545 at the prepare (1.95 behind); edit heard at -33.1 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1m) Polarity L, at Width 0.5 (a discrete field on the live path)     : A -4.701 (moved 0.0040) | B fresh -1.784, published -4.701 at the prepare (2.92 behind); edit heard at -0.4 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1n) Drive 8 -> 12 with Level Match OFF                               : A -5.521 (moved 0.0019) | B fresh -7.612, published -6.000 at the prepare (1.61 behind); edit heard at -26.3 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1o) Algorithm Haas -> Velvet: an ordinary duck, re-prepared right after its bottom: A -5.521 (moved 0.0019) | B fresh -7.237, published -5.525 at the prepare (1.71 behind); edit heard at -31.4 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1p) a FORCED swap, Drive 8 -> 12, no injection (preset / undo), right after its bottom: A -5.521 (moved 0.0019) | B fresh -7.611, published -6.000 at the prepare (1.61 behind); edit heard at -40.8 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1q) an ordinary duck's entry: an inert band-count change carrying Drive 8 -> 12, inside its fade-out: A -5.521 (moved 0.0019) | B fresh -7.612, published -5.997 at the prepare (1.61 behind); edit heard at -31.7 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1r) a mid-duck edit: Width 1.0 -> 2.0 in a Level Match duck's fade-in, re-prepared 0.2 s after it ended: A -5.521 (moved 0.0019) | B fresh -7.798, published -5.655 at the prepare (2.14 behind); edit heard at -6.7 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1r) its twin: the same duck, no Width edit                           : the edit block plays 0.50 of the level after the duck (fade-in) | published -5.5195 -> -5.5195 (KEPT)
+  (1s) a forced swap, Drive 8 -> 12, adopted by a host reset in its fade-out (reset()'s adoption): A -5.521 (moved 0.0019) | B fresh -7.612, published -6.009 at the prepare (1.60 behind); edit heard at -15.9 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (7)  a DRAG: Width 1.0 -> 2.0, one edit per block for 0.5 s           : A -5.521 (moved 0.0019) | B fresh -7.800, published -5.687 at the prepare (2.11 behind); edit heard at -11.6 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (1d) the width played in the edit block (1 = the A twin): first 32 frames 1.016, last 32 1.249; the B twin's 2.0000
+  (2a) Width 1.0 -> 2.0                                                 : A -5.521 -> B fresh -7.811 | settled on B 5.26 s after the edit (published -7.8000, 0.011 dB off) | re-prepared: -7.8000 -> -7.8000 (KEPT)
+  (2a)' still >= 0.3 dB off B                                           : 2.28 s after the edit, published -7.5013 (0.301 dB off B) -> +0.0000
+  (2b) Drive 8 -> 2                                                     : A -5.521 -> B fresh -2.154 | settled on B 5.69 s after the edit (published -2.1666, 0.012 dB off) | re-prepared: -2.1666 -> -2.1666 (KEPT)
+  (2b)' still >= 0.3 dB off B                                           : 2.80 s after the edit, published -2.4570 (0.300 dB off B) -> +0.0000
+  (2c) Mix 1 -> 0.5                                                     : A -5.521 -> B fresh -3.039 | settled on B 5.05 s after the edit (published -3.0568, 0.018 dB off) | re-prepared: -3.0568 -> -3.0568 (KEPT)
+  (2c)' still >= 0.3 dB off B                                           : 2.49 s after the edit, published -3.3379 (0.300 dB off B) -> +0.0000
+  (2d) Amount 0.5 -> 1.0                                                : A -5.521 -> B fresh -6.330 | settled on B 4.12 s after the edit (published -6.3152, 0.015 dB off) | re-prepared: -6.3152 -> -6.3152 (KEPT)
+  (2d)' still >= 0.3 dB off B                                           : 1.36 s after the edit, published -6.0275 (0.300 dB off B) -> +0.0000
+  (2e) Width 1.0 -> 1.05 (small)                                        : A -5.521 -> B fresh -5.628 | settled on B 2.28 s after the edit (published -5.6140, 0.014 dB off) | re-prepared: -5.6140 -> -5.6140 (KEPT)
+  (2f) a second live edit, Drive 8 -> 12, on (2a)'s caught-up Width 2.0 : A -7.800 (moved 0.0099) | B fresh -9.801, published -7.800 at the prepare (2.00 behind); edit heard at -26.5 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (8) (2b)'s keep, resumed at -70 dBFS                                  : kept -2.1666 (twin -2.1666) | applied: first -2.1666 (at 0)  max|D| 0.0000  LS max|D| 0.0000  resid 8.1e-16 | published drift 0.0000 | input ms 1.5e-07
+  (3a) Output Gain 0 -> -6 dB (Level Match off, where it is heard)      : the edit block vs the no-edit twin: differs | published -5.5208 -> -5.5208 (KEPT)
+  (3b) Output Balance 0 -> +0.5                                         : the edit block vs the no-edit twin: differs | published -5.5208 -> -5.5208 (KEPT)
+  (3c) Bypass on                                                        : the edit block vs the no-edit twin: differs | published -5.5208 -> -5.5208 (KEPT)
+  (3d) Band Solo, band 4 (Multiband on)                                 : the edit block vs the no-edit twin: differs | published -5.5208 -> -5.5208 (KEPT)
+  (3e) Haas Delay 12 -> 30 ms under Velvet (guarded out; T)             : the edit block vs the no-edit twin: bit-identical (inert) | published -5.0746 -> -5.0746 (KEPT)
+  (3f) Chorus Rate 0.5 -> 5 Hz under Haas (guarded out)                 : the edit block vs the no-edit twin: bit-identical (inert) | published -5.5208 -> -5.5208 (KEPT)
+  (3g) the Level Match switch, on -> off (a duck; right after its bottom): the bottom block vs the no-edit twin: differs | published -5.5206 -> -5.5206 (KEPT)
+  (4a) Width 1.0 -> 2.0, then 3 s of digital silence                    : A -5.521 (moved 0.0019) | B fresh -7.805, published -5.538 at the prepare (2.27 behind); edit heard at -14.2 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (4b) the same, then the audio resumes                                 : settled on B 4.54 s after the audio resumed | -7.7884 -> -7.7884 (KEPT)
+  (5a) A/B: requestDuck + Drive 8 -> 12 + injection, after the bottom   : injected -7.6117 (fresh B), bottom -7.6082 | re-prepared -7.6082 -> -7.6082 (KEPT), 0.003 dB off B
+  (5a) P1b                                                              : on silence from 8 blocks before the event, 0.3 s from the bottom: |pub - injected| 0.00e+00 (re-armed); identical-slot control 0.715 dB
+  (5b) Width 1.0 -> 2.0, a host reset on the next block, re-prepared one block later: A -5.521 (moved 0.0019) | B fresh -7.797, published -5.523 at the prepare (2.27 behind); edit heard at -17.3 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (5c) the same, re-prepared 0.5 s after the host reset                 : A -5.521 (moved 0.0019) | B fresh -7.800, published -6.444 at the prepare (1.36 behind); edit heard at -7.1 dB | after +0.0000 (restore +0.0000) | then the restore's: published same, output same
+  (5d) the host reset, then the measure catches up                      : settled on B 5.11 s after the host reset | -7.8035 -> -7.8035 (KEPT)
+  (6) Drive 8 -> 12 (Level Match off), then +Inf injected un-ducked     : published -nan -> +0.0000 | the finite twin (-7.6116 injected): -7.4124 -> -7.4124 (KEPT)
+  (6a) reset: 0x0p+0, bits=00000000, fp-equal=1, bit-exact=1
+  (9) a forced duck in flight, prepare() with nothing primed            : Width 1.0 -> 2.0 -5.5208 -> +0.0000 | Output Gain only (the event-matched twin) -5.5208 -> -5.5208
+  (10a) the matcher directly: the input stops, a wet tail goes on       : -12.0386 -> -20.0788 (last 0.5 s within 0.0084 dB), current never | the twin (input 6 dB under): current at 5.73 s, -6.0215 | input back: current at 2.65 s (-6.1534), -6.0238 at 6 s (-6.0206)
+  (10b) ...with a host reset right after the change                     : -12.0386 -> -20.0789 (last 0.5 s within 0.0083 dB), current never | input back: current at 2.65 s, -6.0238 at 6 s
+  (10c) tails against a sliver of input, swept                          : 25 runs, current while >= 0.3 dB off in 0 (worst 0.000 dB) | current 3.16..3.17 s after the return, none never: yes, |end - ratio| <= 0.0005 dB
+Test 70: an A/B slot's remembered Level-Match gain comes back with the validity of the result it was taken from -- the engine records it, the measure confirms it (ADR-0007, A/B provenance)
+  (1a) the matcher: a flush (prepare), then stationary audio            : after the flush current yes, measured no | measured 2.68 s later at -5.9209 (target -6.0206), current throughout: yes
+  (1b) on the measured result                                           : softReset() current/measured 1/1 (1 after 4 blocks) | inputsChanged() 0/0 | setDisplayedGainDb (v, true) 1/1
+  (1c) a flush, then 5 s of digital silence                             : measured during the silence never, current throughout yes | audio then: measured 2.68 s later
+  (1d) setDisplayedGainDb (converged + 2 dB, false)                     : current/measured 0/0 | through 1 s of silence (the gate open on the tails): nothing | audio: current at 1.62 s, measured at 1.62 s (-5.9208)
+  (1d) the value just confirmed, restored unmeasured at once            : the next audible block confirms nothing | measured 0.89 s later
+  (1e) a measured -3 dB restored, Drive 8 -> 12 the next block          : floor -6.0030, published -6.0031 | current yes, measured no | re-confirmed 0.89 s later | control (Drive stays 8): measured throughout yes
+  (1) the invariant, every matcher lane                                 : 0 of 8877 blocks measured without being current
+  (2a) A (Width 2) left 4 s after the first prepare, back after 2 s on B: left at -7.7714 (fresh -7.7714), restored -7.7714 at the bottom | re-prepared -7.7755 -> -7.7755 (KEPT), 0.024 dB off fresh
+  (2b) A edited Width 1 -> 2 one block before it is left                : left at -5.5093 (fresh -7.7714), restored -5.5093 | re-prepared -6.0943 -> +0.0000 (FLUSHED); a keep: 1.706 dB off fresh
+  (2c) an ordinary duck (inert band count) + Width 1 -> 2, A/B in its fade-out: switch block plays 2.1e-05 / 2.7e-05 of the level before (both lanes); the Width edit heard at -26.9 dB | dirty -6.0813 -> +0.0000 (FLUSHED), 1.719 dB off fresh | control -5.4947 -> -5.4947 (KEPT)
+  (2d) A left 0.5 s after the first prepare's flush                     : left at -6.5605, restored -6.5605 | re-prepared -6.5841 -> +0.0000 (FLUSHED); a keep: 1.079 dB off fresh
+  (2e) a measured restore the predict floor lowers (N x 2)              : B left at -3.5204 | back from Drive 8: published -6.0030 at the bottom (floor -6.0030) | left, back: -5.2397 -> +0.0000 (FLUSHED), 1.740 dB off fresh | from Drive 16: -3.5204 at the bottom, then -3.4953 -> -3.4953 (KEPT)
+  (2f) requestDuck + Width 1 -> 2, A/B in its fade-out                  : vs the same duck without the switch: -999.0 dB through the switch block, -6.2 dB from event + 2 (its bottom) | the control lane bit-identical until the return | left at -5.5093, restored -5.5093 | Width 2: -6.0813 -> +0.0000 (FLUSHED), a keep 1.719 dB off fresh | control (Output Gain): -5.4947 -> -5.4947 (KEPT), 0.024 dB off fresh
+  (2g) a stale record restored audibly vs the same value injected       : record -5.5093, B playing -7.4316 before | the bottom -5.5182 (no restore: -7.4348; its output -16.3 dB from the restore's) | published and output from the switch bit-identical to the injection's | re-prepared: restore -5.5486 -> +0.0000 (FLUSHED), injection -5.5486 -> -5.5486 (KEPT)
+  (3o) control: A -> B 1.5 s after B was left                           : B left at -7.7714 | restored -7.7714 | re-prepared -7.7610 -> -7.7610 (KEPT), 0.036 dB off fresh
+  (3a) A -> B, B -> A before a block at x                               : restored -7.7714 at y (A's live value at x: -4.8005) | -7.7610 -> -7.7610 (KEPT)
+  (3b) A -> B at x, B -> A at x + 1 (a restore armed)                   : restored -7.7714 at y (the live value at x + 1: -4.8048) | -7.7610 -> -7.7610 (KEPT)
+  (3b) ...the bottom of the double switch                               : A's record -4.8005, published at that bottom -5.5105 (a fresh A -5.5207); (3a)'s bottom -5.5105 (B's record -7.7714)
+  (3c) requestAbSwitch, then requestDuck, before the block              : restored -7.7714 | -7.7610 -> -7.7610 (KEPT) | published and output from y bit-identical to the control's
+  (3d) forgetAbMatchMemory at x, A -> B at y                            : restored +0.0000 | -1.6804 -> +0.0000 (FLUSHED)
+  (3e) a pending switch, then forgetAbMatchMemory                       : switch + forget bit-identical to, requestDuck + forget bit-identical to, switch then forget with its restore armed bit-identical to the requestDuck twin (published and output, 0.5 s) | the twin at the bottom -4.8136 (B's record -7.7714) | no duck vs the twin: -18.3 dB
+  (4a) a 48 kHz record restored at 44.1 kHz / back at 48                : A left at -5.5092 (48 kHz) | at 44.1 kHz: restored -5.5092, -5.5016 -> +0.0000 (FLUSHED), 0.133 dB off a fresh 44.1 kHz engine | 48 -> 44.1 -> 48: restored -5.5092, -5.5025 -> -5.5025 (KEPT), 0.018 dB off fresh
+  (4c) A -> B requested while suspended, prepareToPlay at 48 kHz        : B's record -7.7714, A's live -5.4484 | the prepare published +0.0000, the first block -7.7714 | -7.7606 -> -7.7606 (KEPT), 0.041 dB off fresh | back to A: restored -5.4484, -5.4410 -> -5.4410 (KEPT), 0.087 dB off fresh
+  (4d) the same, prepareToPlay at 44.1 kHz                              : the prepare published +0.0000, the first block -7.7714 | -7.7595 -> +0.0000 (FLUSHED)
+  (5) A (Multiband + Mono Maker) back with its freqs drifted            : crossover 14 ulp (1.23e-06), Mono Maker 10 ulp (1.16e-06) | restored -5.5074, -5.4996 -> -5.4996 (KEPT), 0.020 dB off fresh | 1e-4: 1.00e-04 / 1.00e-04, restored -5.5074, -5.4996 -> +0.0000 (FLUSHED)
+  (6a) an injection's value, left 3 blocks after it                     : injected -7.7714, bottom -7.7668 (no injection: -5.5097) | left at -7.7575, restored -7.7575, -7.7469 -> -7.7469 (KEPT) | control -5.5405 -> +0.0000 (FLUSHED)
+  (6a) ...re-prepared 3 blocks after the bottom instead                 : -7.7575 -> -7.7575 (KEPT) | without the injection -5.5115 -> +0.0000 (FLUSHED)
+  (6b) NaN                                                              : A left at NaN | B's bottom and after finite yes | back to A (a NaN record) bit-identical to, a NaN injection bit-identical to requestDuck alone (published and output, 0.5 s)
+  (7a) a MEASURED record, B differs in Width                            : record -4.6143 (a fresh engine at A: -5.5204) | on silence from the bottom, 0.3 s: max |pub - record| 0.00e+00 | re-prepared after it: -5.2230 -> -5.2230 (KEPT)
+  (7b) an UNMEASURED record (0 dB), B differs                           : record +0.0000 (a fresh engine at A: -5.3635) | on silence from the bottom, 0.3 s: max |pub - record| 0.00e+00 | re-prepared after it: -1.6627 -> +0.0000 (FLUSHED)
+  (7c) a MEASURED record, identical inputs                              : record -2.5259 (a fresh engine at A: -5.5204) | on silence from the bottom, 0.3 s: max |pub - record| 9.19e-01 | re-prepared after it: -3.4705 -> -3.4705 (KEPT)
+  (7d) an UNMEASURED record, identical inputs                           : record +0.0000 (a fresh engine at A: -5.3635) | on silence from the bottom, 0.3 s: max |pub - record| 4.08e+00 | re-prepared after it: -4.1004 -> +0.0000 (FLUSHED)
+Test 71: a gain-only Level-Match engage lands on the value the matcher publishes, current or not -- the value Level Match on throughout is publishing (ADR-0007; Devin)
+  (1) Width 1 -> 2, engage 0.3 s later        : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.760 (fresh -7.798), plays D -0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.110 -> 0.000 | phi_F 0.006 | excursion +0.000
+                                              : 6 s after the edit KEPT, max|applied - fresh| 0.010 dB over 0.5 s | at 44.1 kHz -7.8018 -> +0.0000
+  (1') the same, engaged one block after the edit: before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.521 (fresh -7.797), plays D -0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.001 -> 0.000 | phi_F 0.001 | excursion +0.000
+  (2a) Drive 8 -> 12 (the predict pre-ducks)  : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -6.078 (fresh -7.610), plays D +0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.088 -> 0.000 | phi_F 0.004 | excursion +0.000
+                                              : 6 s after the edit KEPT, max|applied - fresh| 0.008 dB over 0.5 s | at 44.1 kHz -7.6197 -> +0.0000
+  (2b) Mix 1 -> 0.5                           : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.330 (fresh -3.032), plays D +0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.089 -> 0.001 | phi_F -0.006 | excursion +0.156
+  (2c) Amount 0.5 -> 1.0                      : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.588 (fresh -6.325), plays D +0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.033 -> 0.000 | phi_F 0.002 | excursion +0.000
+  (2d) Haas Delay 12 -> 30 ms                 : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.505 (fresh -5.522), plays D +0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.006 -> 0.000 | phi_F -0.001 | excursion +0.008
+  (3) forced engage (preset / undo: Level Match on): before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published -5.760 (fresh -7.798), plays D +5.532 | after it FLUSHED | pub vs on-throughout 4.7e-03 | applied vs on-throughout 0.083 -> 0.004 | phi_F 0.006 | excursion +0.000
+  (4) positive: programme A, Drive 0, Width 0 -> 2: before KEPT (+6.035, moved 0.0033 over 0.5 s) | edit FLUSHED | engage FLUSHED | bottom FLUSHED, published +6.001 (fresh -4.118), plays D +0.000 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.031 -> 0.000 | phi_F -0.221 | excursion +2.435
+                                              : the landing steps +6.00 dB above the Level-Match-off level; published +10.12 dB over the fresh engine (Level Match on throughout plays the same)
+  (C) Width 1 -> 2, engage 6 s later          : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit FLUSHED | engage KEPT | bottom KEPT, published -7.802 (fresh -7.807), plays D -0.000 | after it KEPT | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.001 -> 0.001 | phi_F -0.000 | excursion +0.000
+  (D) Output Gain 0 -> -6, engage 0.3 s later : before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit KEPT | engage KEPT | bottom KEPT, published -5.519 (fresh -5.519), plays D -0.000 | after it KEPT | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.001 -> 0.001 | phi_F -0.000 | excursion +0.001
+  (E) Case B: Width 1 -> 2 in the engage's snapshot: before KEPT (-5.519, moved 0.0031 over 0.5 s) | edit - | engage - | bottom -, published -5.520 (fresh -7.798), plays D +5.368 | after it FLUSHED | pub vs on-throughout 0.0e+00 | applied vs on-throughout 5.368 -> 0.047 | phi_F 0.798 | excursion +0.000
+  (G) a flush's value (re-prepared after the edit): before KEPT (-5.521, moved 0.0019 over 0.5 s) | edit KEPT | engage KEPT | bottom KEPT, published -6.165 (fresh -7.798), plays D -0.000 | after it KEPT | pub vs on-throughout 0.0e+00 | applied vs on-throughout 0.334 -> 0.002 | phi_F 0.008 | excursion +0.000
+Test 72: a measured A/B gain restored at an upgraded duck's bottom survives a same-rate re-prepare in the fade-in -- the bottom retires the live change it reported (ADR-0007, duckMeasDirty lifecycle; Devin)
+  premise: an ordinary duck, and the A/B switch inside its fade-out     : B left at -7.5992 (fresh B -7.5992) | the switch block plays 2.4e-05 of the level before (0.95 without the duck), bit-identical to the duck alone through it: yes
+  premise: the upgraded bottom restores B's record                      : published -5.2853 in the switch block, -7.5956 at the bottom (block 2) | the duck alone -5.2947 there
+  premise: the fade-in                                                  : block + 2 / + 4 / + 6 of the duck plays 0.00 / 0.22 / 0.90 of a fresh B's energy
+  (B)  before the bottom (the fade-out's last gap)                      : -5.2853 -> +0.0000 (FLUSHED) | the first block publishes -7.5956 (the record -7.5992) | re-prepared 3 blocks later KEPT
+  (C)  the earliest fade-in gap (after the bottom block)                : -7.5956 -> -7.5956 (KEPT), 0.014 dB off fresh B | applied in the next block -7.5932 (resid 7e-16) | re-prepared 3 blocks later KEPT
+  (A)  ~11 ms into the fade-in (Devin's case)                           : -7.5926 -> -7.5926 (KEPT), 0.017 dB off fresh B | applied in the next block -7.5890 (resid 6e-16) | re-prepared 3 blocks later KEPT
+  (D)  ~21 ms into the fade-in                                          : -7.5890 -> -7.5890 (KEPT), 0.021 dB off fresh B | applied in the next block -7.5849 (resid 6e-16) | re-prepared 3 blocks later KEPT
+  (D)  the fade-in's last gap                                           : -7.5868 -> -7.5868 (KEPT), 0.023 dB off fresh B | applied in the next block -7.5831 (resid 6e-16) | re-prepared 3 blocks later KEPT
+       control: the first gap after the fade-in (Normal)                : -7.5859 -> -7.5859 (KEPT), 0.024 dB off fresh B | applied in the next block -7.5837 (resid 6e-16) | re-prepared 3 blocks later KEPT
+  (A)  ~11 ms into the fade-in, then a quiet resume (-70 dBFS)          : -7.5926 -> -7.5926 (KEPT) | applied in the first quiet block -7.5926 (resid 7e-16)
+       control: the same gap, re-prepared at 44.1 kHz                   : -7.5926 -> +0.0000 (FLUSHED)
+  (E)  the ordinary duck alone (Width 1 -> 2 live, no switch)           : before the bottom FLUSHED | ~11 ms into the fade-in FLUSHED | 6 s later KEPT (-7.8018)
+       controls ~11 ms into their fade-ins                              : the switch alone KEPT (-7.5938) | the duck carrying no measurement change + the switch KEPT (-7.5926)
+  (F)  Devin's route, B's record NOT measured (its visit 0.5 s long)    : B left at -6.6707, 0.939 dB off a converged fresh B | restored -6.6726 | ~11 ms into the fade-in FLUSHED
+  (H1) a host reset ~11 ms into the fade-in, a re-prepare 3 blocks later: Devin's route KEPT (-7.5831) | the switch alone KEPT | the duck alone FLUSHED
+  (H2) B -> A taken ~11 ms into the fade-in, 1 s on A, back to B        : B recorded at -7.5926, restored -7.5902 on the return | re-prepared KEPT (0.035 dB off fresh B) | the switch alone KEPT
+  (G1) the Width change live only through the duck (B at Width 2)       : B -4.6143, restored -4.6143 | moved 0.000000 dB over 0.3 s of silence
+  (G2) an Output Gain change only (not a measurement input)             : B -2.5259, restored -2.7760 | moved 1.304917 dB over 0.3 s of silence
+Test 73: an A/B slot left before its result is measured carries the measure's post-change evidence -- restored as that evidence's mean, measured, once it is a measurement, and carried to the next visit otherwise (ADR-0007, A/B provenance: the record's evidence)
+  (1a) wet 2x -> 3x, reported                                           : measured before yes (evidence 0.000) | first counted block 0.277 s after the change | share follows 1 - (1 - c)^n to 5.6e-16 | 0.5 after 117 counted blocks (0.624 s) | mean -9.5424 (target -9.5424) | published then -7.6467, measured no | measured live 2.74 s after it | evidence then 0.000 / 0.000
+  (1a) wet 2x -> 8x: a fast glide                                       : the largest published step over the counted blocks 0.173 dB (a slow step <= 0.071) | share follows 1 - (1 - c)^n to 4.4e-16
+  (1b) restoreUnmeasured (value, evidence of share >= 0.5)              : published -9.5424 (the mean -9.5424; the value recorded -7.6467) | current 1 measured 1 | evidence 0.000
+  (1c) restoreUnmeasured (value, evidence of share < 0.5)               : share 0.4971 -> published -7.7652 exactly yes, current 0 measured 0, evidence carried bit-exact yes | the same audio then: 0.5 reached 0.496 s after the restore (a fresh start: 0.901 s), formula to 1.1e-16, mean -9.5424
+  (1d) restoreUnmeasured (v, {}) against setDisplayedGainDb (v, false)  : 3 s of audio: published, current, measured and evidence identical every block: yes (measured by the end: yes)
+  (1e) evidence { 0.7, NaN / +-Inf }, { Inf / NaN, 1 }                  : every one restores the value, not current: yes
+  (1f) an unmeasured result 1 s after a change                          : evidence 0.553 | softReset keeps it yes | inputsChanged / reset / setDisplayedGainDb (v, false) clear it yes | the floor over (1b)'s certified value: published -11.4970, measured 0, evidence 0.000
+  B left the block before its edit (A at Drive 12), back, re-prepared: record -5.4711, the bottom -5.4711, KEPT | 1.5 s in: record -5.2410, the bottom -5.5151 (the evidence's mean)
+  8 -> 12 left 0.3 s after the edit                                 : record -6.0717 (1.504 dB off fresh; re-prepared there FLUSHED) | A plays -5.2785 | the return's bottom -6.0717 | re-prepared -6.0921 -> +0.0000 (FLUSHED), 1.521 dB off fresh
+  8 -> 12 left 1.1 s after the edit                                 : record -6.8001 (0.801 dB off fresh; re-prepared there FLUSHED) | A plays -5.2734 | the return's bottom -7.6054 (a return 1 s later -7.6054) | re-prepared -7.5944 -> -7.5944 (KEPT), 0.016 dB off fresh
+  8 -> 12 left 6.0 s after the edit                                 : record -7.6182 (0.004 dB off fresh; re-prepared there KEPT) | A plays -5.2801 | the return's bottom -7.6182 | re-prepared -7.6089 -> -7.6089 (KEPT), 0.017 dB off fresh
+  8 -> 2  left 0.3 s after the edit                                 : record -5.2694 (3.124 dB off fresh; re-prepared there FLUSHED) | A plays -5.3551 | the return's bottom -5.2694 | re-prepared -4.4667 -> +0.0000 (FLUSHED), 2.312 dB off fresh
+  8 -> 2  left 1.1 s after the edit                                 : record -3.9079 (1.756 dB off fresh; re-prepared there FLUSHED) | A plays -5.3499 | the return's bottom -2.1897 (a return 1 s later -2.1897) | re-prepared -2.1821 -> -2.1821 (KEPT), 0.031 dB off fresh
+  8 -> 2  left 6.0 s after the edit                                 : record -2.1644 (0.009 dB off fresh; re-prepared there KEPT) | A plays -5.3576 | the return's bottom -2.1644 | re-prepared -2.1574 -> -2.1574 (KEPT), 0.003 dB off fresh
+  8 -> 12 visits of 0.3 s:  #0 FLUSHED #1 FLUSHED #2 FLUSHED #3 KEPT (the mean) | the first kept return restores -7.5524 (the record -6.9750), 0.066 dB off fresh | control (each return's Drive moved 0.01 dB): FLUSHED
+  8 -> 12 visits of 0.6 s:  #0 FLUSHED #1 KEPT (the mean) | the first kept return restores -7.5891 (the record -6.9405), 0.033 dB off fresh | control (each return's Drive moved 0.01 dB): FLUSHED
+  8 -> 2  visits of 0.3 s:  #0 FLUSHED #1 FLUSHED #2 FLUSHED #3 KEPT (the mean) | the first kept return restores -2.1049 (the record -2.8208), 0.055 dB off fresh | control (each return's Drive moved 0.01 dB): FLUSHED
+  8 -> 2  visits of 0.6 s:  #0 FLUSHED #1 KEPT (the mean) | the first kept return restores -2.1521 (the record -3.0769), 0.008 dB off fresh | control (each return's Drive moved 0.01 dB): FLUSHED
+  (4a) B left in an ordinary duck carrying Width 1 -> 2                 : record -6.8001, the bottom -6.8001, FLUSHED (a fresh B at Width 2 -9.7839; at Width 1 -7.6102) | the duck without Width: record -6.8001, the bottom -7.6054, KEPT, 0.016 dB off fresh
+  (4b) the same record back into Width 2                                : record -6.8001, the bottom -6.8001, FLUSHED
+  (4c) the return primed at 48.0 kHz                                   : record -6.8001 | the prepare publishes +0.0000, the first block -7.6054 | re-prepared KEPT
+  (4c) the return primed at 44.1 kHz                                   : record -6.8001 | the prepare publishes +0.0000, the first block -6.8001 | re-prepared FLUSHED
+  (4d) forgetAbMatchMemory on A, then back                              : the bottom -6.0030 (the predict floor at Drive 12), FLUSHED
+Test 74: a non-finite Velvet Density is compared as the density the Velvet plays -- it changes nothing the Level-Match measurement reads (ADR-0007, Note of 2026-09-26, the non-finite Velvet Density; Devin)
+  (0) Level Match off, the Density from block 5               : 7fc00000 held 7fc00123 held ffc00000 held 7f800000 held ff800000 held | 0.7 moves the output
+  (1) NaN -> the same NaN                         : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN -> NaN 0x7fc00123                       : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN -> -NaN                                 : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) +Inf -> +Inf (engine API)                   : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) -Inf -> -Inf (engine API)                   : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) +Inf -> -Inf (engine API)                   : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) 0.3 -> NaN                                  : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN -> 0.3 (the held density)               : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN -> 0.300002 (inside 1e-5)               : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) 0.3 -> 0.300002 (inside 1e-5)               : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN, Output Gain -3 -> -9 (not an input)    : re-prepared -6.1230 -> -6.1230 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (1) NaN -> 0.30002 (outside 1e-5)               : re-prepared -6.1230 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (1) NaN -> 0.7                                  : re-prepared -6.1230 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (1) +Inf -> 0.7 (engine API)                    : re-prepared -6.1230 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (1) 0.3 -> 0.7                                  : re-prepared -6.1230 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (1) 0.3 -> 0.30002 (outside 1e-5)               : re-prepared -6.1230 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (1) NaN, Drive 8 -> 9 (another input)           : re-prepared -6.1231 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (2) re-prepared in its fade-out                 : re-prepared -6.1119 -> -6.1119 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (2) re-prepared after its bottom                : re-prepared -6.4816 -> -6.4816 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (2) a host reset in its fade-out, re-prepared   : re-prepared -6.1149 -> -6.1149 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (2) the same duck carrying Drive 8 -> 9         : re-prepared -6.5447 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (3) identical NaN slots                         : record -8.3353, the bottom -8.3355 | re-prepared -8.3354 -> -8.3354 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (3) A Drive 4, B Drive 8, both NaN (quiet)      : record -8.3353, the bottom -8.3353 | re-prepared -8.3021 -> -8.3021 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (3) B back as NaN 0x7fc00123                    : record -8.3353, the bottom -8.3355 | re-prepared -8.3354 -> -8.3354 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (3) B back as -NaN                              : record -8.3353, the bottom -8.3355 | re-prepared -8.3354 -> -8.3354 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (3) B +Inf, A -Inf (engine API)                 : record -8.3353, the bottom -8.3355 | re-prepared -8.3354 -> -8.3354 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (3) A plays 0.7 for 0.5 s of the visit          : record -8.3353, the bottom -8.3354 | re-prepared -8.3351 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (3) identical NaN slots, re-prepared at 44.1 kHz: record -8.3353, the bottom -8.3355 | re-prepared -8.3354 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (3) S5: B Drive 8 -> 12, left 1.1 s later       : record -9.5818, the bottom -10.5988 (the evidence's mean) | re-prepared KEPT | bit-identical to the twin: yes
+  (4) Level Match turned on at 3.5 s under NaN    : published at the bottom -8.3361 | bit-identical to the twin: yes
+  (5a) 0.3 -> 0.7, measured; NaN; 0.7 again       : the module plays 0.69998014 (1 of 33 densities; computed 0.69998014), 0.7 not | re-prepared -8.3445 -> -8.3445 (KEPT) | the twin KEPT | bit-identical to it: yes
+  (5b) A at Haas, the host writes 0.7 then NaN    : record -8.3353, the bottom -8.3353 | re-prepared -8.3013 -> +0.0000 (FLUSHED) | the twin FLUSHED | bit-identical to it: yes
+  (5b) control: the same visit, no write          : record -8.3353, the bottom -8.3353 | re-prepared -8.3021 -> -8.3021 (KEPT) | the twin KEPT | bit-identical to it: yes
+Test 75: a forced bulk swap adopts the complete destination or nothing -- every interleaving of its request, writes and completion with the engine's two takes (ADR-0057; KI-032)
+  (1) one swap: 4620 cases, 0 with a state no swap completed
+  (2) two swaps: 3003 cases, 0 with a state no swap completed
+  (3) the activation: 168 cases, 0 with a state no swap completed
+  (4) 40 swaps across two sequence wraps land: yes | a completion of another sequence ignored: yes, the matching one starts it: yes | a forget while awaited keeps the swap: yes | the engine API's duck starts at once: yes, lands: yes
+  total: 7791 cases | a state no swap completed 0 | final wrong or pending 0 | a completion that did not start its swap by the next block 0 | allocations 0
+Test 77: independently crossfaded controls remain live during ordinary ducks (N2-02)
+  44100/64 Bypass initial0 script0: live=1 target=1 ticks=1 audio=0.30667 control=0.24081 edges=1/1
+  44100/64 Bypass initial0 script1: live=1 target=1 ticks=1 audio=0.13313 control=0.11092 edges=1/1
+  44100/64 Bypass initial0 script2: live=1 target=1 ticks=1 audio=0.33283 control=0.31338 edges=1/1
+  44100/64 Bypass initial0 script3: live=1 target=1 ticks=1 audio=0.53692 control=0.54209 edges=1/0
+  44100/64 Bypass initial0 script4: live=1 target=1 ticks=1 audio=0.13313 control=0.15938 edges=2/2
+  44100/64 Bypass initial0 script5: live=1 target=1 ticks=1 audio=0.09238 control=0.17418 edges=4/4
+  44100/64 Bypass initial0 script6: live=1 target=1 ticks=1 audio=0.30245 control=0.25071 edges=1/1
+  44100/64 Bypass initial1 script0: live=1 target=1 ticks=1 audio=0.30667 control=0.24081 edges=1/1
+  44100/64 Bypass initial1 script1: live=1 target=1 ticks=1 audio=0.13313 control=0.11092 edges=1/1
+  44100/64 Bypass initial1 script2: live=1 target=1 ticks=1 audio=0.33283 control=0.31338 edges=1/1
+  44100/64 Bypass initial1 script3: live=1 target=1 ticks=1 audio=0.53692 control=0.54209 edges=1/0
+  44100/64 Bypass initial1 script4: live=1 target=1 ticks=1 audio=0.13313 control=0.15938 edges=2/2
+  44100/64 Bypass initial1 script5: live=1 target=1 ticks=1 audio=0.092381 control=0.17418 edges=4/4
+  44100/64 Bypass initial1 script6: live=1 target=1 ticks=1 audio=0.30245 control=0.25071 edges=1/1
+  44100/64 MB initial0 script0: live=1 target=1 ticks=1 audio=0.070655 control=0.60959 edges=1/1
+  44100/64 MB initial0 script1: live=1 target=1 ticks=1 audio=0.060056 control=0.29869 edges=1/1
+  44100/64 MB initial0 script2: live=1 target=1 ticks=1 audio=0.15004 control=0.73983 edges=1/1
+  44100/64 MB initial0 script3: live=1 target=1 ticks=1 audio=1.6418 control=1.4461 edges=1/0
+  44100/64 MB initial0 script4: live=1 target=1 ticks=1 audio=0.25027 control=0.43961 edges=2/2
+  44100/64 MB initial0 script5: live=1 target=1 ticks=1 audio=0.29896 control=0.47962 edges=4/4
+  44100/64 MB initial0 script6: live=1 target=1 ticks=1 audio=0.052748 control=0.5868 edges=1/1
+  44100/64 MB initial1 script0: live=1 target=1 ticks=1 audio=0.068761 control=0.60765 edges=1/1
+  44100/64 MB initial1 script1: live=1 target=1 ticks=1 audio=0.060027 control=0.29521 edges=1/1
+  44100/64 MB initial1 script2: live=1 target=1 ticks=1 audio=0.15007 control=0.73802 edges=1/1
+  44100/64 MB initial1 script3: live=1 target=1 ticks=1 audio=1.6418 control=1.4461 edges=1/0
+  44100/64 MB initial1 script4: live=1 target=1 ticks=1 audio=0.25028 control=0.43886 edges=2/2
+  44100/64 MB initial1 script5: live=1 target=1 ticks=1 audio=0.29902 control=0.47973 edges=4/4
+  44100/64 MB initial1 script6: live=1 target=1 ticks=1 audio=0.052752 control=0.58346 edges=1/1
+  48000/127 Bypass initial0 script0: live=1 target=1 ticks=1 audio=0.28498 control=0.22526 edges=1/1
+  48000/127 Bypass initial0 script1: live=1 target=1 ticks=1 audio=0.17289 control=0.18941 edges=1/1
+  48000/127 Bypass initial0 script2: live=1 target=1 ticks=1 audio=0.4124 control=0.55483 edges=1/1
+  48000/127 Bypass initial0 script3: live=1 target=1 ticks=1 audio=0.55558 control=0.59508 edges=1/0
+  48000/127 Bypass initial0 script4: live=1 target=1 ticks=1 audio=0.23202 control=0.25996 edges=2/2
+  48000/127 Bypass initial0 script5: live=1 target=1 ticks=1 audio=0.22967 control=0.26327 edges=4/4
+  48000/127 Bypass initial0 script6: live=1 target=1 ticks=1 audio=0.54759 control=0.54336 edges=1/1
+  48000/127 Bypass initial1 script0: live=1 target=1 ticks=1 audio=0.28499 control=0.22526 edges=1/1
+  48000/127 Bypass initial1 script1: live=1 target=1 ticks=1 audio=0.17289 control=0.18941 edges=1/1
+  48000/127 Bypass initial1 script2: live=1 target=1 ticks=1 audio=0.4124 control=0.55483 edges=1/1
+  48000/127 Bypass initial1 script3: live=1 target=1 ticks=1 audio=0.55558 control=0.59508 edges=1/0
+  48000/127 Bypass initial1 script4: live=1 target=1 ticks=1 audio=0.23202 control=0.25996 edges=2/2
+  48000/127 Bypass initial1 script5: live=1 target=1 ticks=1 audio=0.22967 control=0.26327 edges=4/4
+  48000/127 Bypass initial1 script6: live=1 target=1 ticks=1 audio=0.54759 control=0.54336 edges=1/1
+  48000/127 MB initial0 script0: live=1 target=1 ticks=1 audio=0.03298 control=0.44673 edges=1/1
+  48000/127 MB initial0 script1: live=1 target=1 ticks=1 audio=0.19591 control=0.52937 edges=1/1
+  48000/127 MB initial0 script2: live=1 target=1 ticks=1 audio=0.44441 control=1.2016 edges=1/1
+  48000/127 MB initial0 script3: live=1 target=1 ticks=1 audio=1.5066 control=1.2656 edges=1/0
+  48000/127 MB initial0 script4: live=1 target=1 ticks=1 audio=0.69989 control=0.54148 edges=2/2
+  48000/127 MB initial0 script5: live=1 target=1 ticks=1 audio=0.62147 control=0.47504 edges=4/4
+  48000/127 MB initial0 script6: live=1 target=1 ticks=1 audio=0.099416 control=0.91037 edges=1/1
+  48000/127 MB initial1 script0: live=1 target=1 ticks=1 audio=0.03298 control=0.44081 edges=1/1
+  48000/127 MB initial1 script1: live=1 target=1 ticks=1 audio=0.19598 control=0.52984 edges=1/1
+  48000/127 MB initial1 script2: live=1 target=1 ticks=1 audio=0.44441 control=1.2015 edges=1/1
+  48000/127 MB initial1 script3: live=1 target=1 ticks=1 audio=1.5066 control=1.2656 edges=1/0
+  48000/127 MB initial1 script4: live=1 target=1 ticks=1 audio=0.69989 control=0.54148 edges=2/2
+  48000/127 MB initial1 script5: live=1 target=1 ticks=1 audio=0.62147 control=0.47504 edges=4/4
+  48000/127 MB initial1 script6: live=1 target=1 ticks=1 audio=0.099415 control=0.91041 edges=1/1
+  96000/256 Bypass initial0 script0: live=1 target=1 ticks=1 audio=0.3106 control=0.28921 edges=1/1
+  96000/256 Bypass initial0 script1: live=1 target=1 ticks=1 audio=0.19115 control=0.31325 edges=1/1
+  96000/256 Bypass initial0 script2: live=1 target=1 ticks=1 audio=0.46509 control=0.58733 edges=1/1
+  96000/256 Bypass initial0 script3: live=1 target=1 ticks=1 audio=0.55691 control=0.63414 edges=1/0
+  96000/256 Bypass initial0 script4: live=1 target=1 ticks=1 audio=0.19115 control=0.38259 edges=2/2
+  96000/256 Bypass initial0 script5: live=1 target=1 ticks=1 audio=0.18029 control=0.29644 edges=4/4
+  96000/256 Bypass initial0 script6: live=1 target=1 ticks=1 audio=0.5592 control=0.52757 edges=1/1
+  96000/256 Bypass initial1 script0: live=1 target=1 ticks=1 audio=0.31059 control=0.28921 edges=1/1
+  96000/256 Bypass initial1 script1: live=1 target=1 ticks=1 audio=0.19115 control=0.31324 edges=1/1
+  96000/256 Bypass initial1 script2: live=1 target=1 ticks=1 audio=0.46509 control=0.58733 edges=1/1
+  96000/256 Bypass initial1 script3: live=1 target=1 ticks=1 audio=0.55691 control=0.63414 edges=1/0
+  96000/256 Bypass initial1 script4: live=1 target=1 ticks=1 audio=0.19115 control=0.38259 edges=2/2
+  96000/256 Bypass initial1 script5: live=1 target=1 ticks=1 audio=0.18029 control=0.29644 edges=4/4
+  96000/256 Bypass initial1 script6: live=1 target=1 ticks=1 audio=0.5592 control=0.52757 edges=1/1
+  96000/256 MB initial0 script0: live=1 target=1 ticks=1 audio=0.026671 control=0.40166 edges=1/1
+  96000/256 MB initial0 script1: live=1 target=1 ticks=1 audio=0.14844 control=0.4128 edges=1/1
+  96000/256 MB initial0 script2: live=1 target=1 ticks=1 audio=0.33397 control=0.92738 edges=1/1
+  96000/256 MB initial0 script3: live=1 target=1 ticks=1 audio=1.0031 control=0.95549 edges=1/0
+  96000/256 MB initial0 script4: live=1 target=1 ticks=1 audio=0.42076 control=0.53691 edges=2/2
+  96000/256 MB initial0 script5: live=1 target=1 ticks=1 audio=0.4334 control=0.42767 edges=4/4
+  96000/256 MB initial0 script6: live=1 target=1 ticks=1 audio=0.087928 control=0.79359 edges=1/1
+  96000/256 MB initial1 script0: live=1 target=1 ticks=1 audio=0.026673 control=0.39911 edges=1/1
+  96000/256 MB initial1 script1: live=1 target=1 ticks=1 audio=0.14844 control=0.41219 edges=1/1
+  96000/256 MB initial1 script2: live=1 target=1 ticks=1 audio=0.33397 control=0.9274 edges=1/1
+  96000/256 MB initial1 script3: live=1 target=1 ticks=1 audio=1.0031 control=0.95549 edges=1/0
+  96000/256 MB initial1 script4: live=1 target=1 ticks=1 audio=0.42077 control=0.53692 edges=2/2
+  96000/256 MB initial1 script5: live=1 target=1 ticks=1 audio=0.43339 control=0.42767 edges=4/4
+  96000/256 MB initial1 script6: live=1 target=1 ticks=1 audio=0.087936 control=0.79359 edges=1/1
+Test 23 extension: Multiband Enable exact stage endpoints and unchanged interiors (N2-03)
+  44100/64 bands2 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 55, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands2 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 55, non-unity Match ticks 2944, gain-clock mismatch 0
+  44100/64 bands2 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 26, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands2 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 26, non-unity Match ticks 2944, gain-clock mismatch 0
+  44100/64 bands3 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 38, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands3 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 38, non-unity Match ticks 2944, gain-clock mismatch 0
+  44100/64 bands3 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 18, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands3 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 18, non-unity Match ticks 2944, gain-clock mismatch 0
+  44100/64 bands4 Mix1.0 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands4 Mix1.0 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 2944, gain-clock mismatch 0
+  44100/64 bands4 Mix0.4 Match0: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 14, non-unity Match ticks 0, gain-clock mismatch 0
+  44100/64 bands4 Mix0.4 Match1: zero/one/interior 144/96/2704 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 14, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands2 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands2 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands2 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands2 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands3 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands3 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands3 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands3 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 0, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands4 Mix1.0 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands4 Mix1.0 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/64 bands4 Mix0.4 Match0: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/64 bands4 Mix0.4 Match1: zero/one/interior 3/2/2939 terminalInside 0 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 1, non-unity Match ticks 2944, gain-clock mismatch 0
+  48000/127 bands2 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 43, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands2 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 41, non-unity Match ticks 3302, gain-clock mismatch 0
+  48000/127 bands2 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands2 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 3302, gain-clock mismatch 0
+  48000/127 bands3 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 52, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands3 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 52, non-unity Match ticks 3302, gain-clock mismatch 0
+  48000/127 bands3 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 25, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands3 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 25, non-unity Match ticks 3302, gain-clock mismatch 0
+  48000/127 bands4 Mix1.0 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 67, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands4 Mix1.0 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 66, non-unity Match ticks 3302, gain-clock mismatch 0
+  48000/127 bands4 Mix0.4 Match0: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 33, non-unity Match ticks 0, gain-clock mismatch 0
+  48000/127 bands4 Mix0.4 Match1: zero/one/interior 180/120/3002 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 32, non-unity Match ticks 3302, gain-clock mismatch 0
+  96000/256 bands2 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 51, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands2 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 51, non-unity Match ticks 6656, gain-clock mismatch 0
+  96000/256 bands2 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands2 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 20, non-unity Match ticks 6656, gain-clock mismatch 0
+  96000/256 bands3 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 142, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands3 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 142, non-unity Match ticks 6656, gain-clock mismatch 0
+  96000/256 bands3 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 67, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands3 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 67, non-unity Match ticks 6656, gain-clock mismatch 0
+  96000/256 bands4 Mix1.0 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 141, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands4 Mix1.0 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 141, non-unity Match ticks 6656, gain-clock mismatch 0
+  96000/256 bands4 Mix0.4 Match0: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 0, gain-clock mismatch 0
+  96000/256 bands4 Mix0.4 Match1: zero/one/interior 387/258/6011 terminalInside 5 bad wet/dry/ref/output/interior 0/0/0/0/0 peak 0
+    observable legacy wet endpoint 46, non-unity Match ticks 6656, gain-clock mismatch 0
+  Match0 legacy wet endpoint visible/masked by downstream rounding: 908/366
+  Match1 legacy wet endpoint visible/masked by downstream rounding: 904/370
+N2-06: exact finite Mix=1 wet endpoint
+  x4 amplitude=0.125 legacy-differences=0
+  x4 amplitude=0.7 legacy-differences=0
+  x4 amplitude=12.345 legacy-differences=114
+  x4 amplitude=1234.57 legacy-differences=114
+  x4 amplitude=123457 legacy-differences=114
+  x4 amplitude=1e+06 legacy-differences=114
+  x4 terminal samples=684 mismatches=0 legacy-differences=456 latency=6
+  endpoint/interior/ramp/clock mismatches 0/0/0/0; discriminating legacy samples 1748
+extreme ch=0 input=0x1.7d784p+26 output=0x1.09a52ep+0 independent_reference=1.03767666
+extreme ch=1 input=0x1.7d784p+26 output=0x1.09a52ep+0 independent_reference=1.03767666
+extreme ch=0 input=-0x1.7d784p+26 output=-0x1.09a52ep+0 independent_reference=-1.03767666
+extreme ch=1 input=-0x1.7d784p+26 output=-0x1.09a52ep+0 independent_reference=-1.03767666
+held_path=1 held_output=0x1.090bfep+0,0x1.090bfep+0 terminal_inside=1 terminal_discriminating=577,577 terminal_bad=0,0
+wrapped output=0x1.09a528p+0,0x1.09a528p+0 latency=6 clock_bad=0
+Test 76: true-bypass endpoints and unchanged interior crossfade (D-01)
+  44100 Hz block 1 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 1 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 64 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 127 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  44100 Hz block 512 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 1 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 64 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 127 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 0 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 0 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 0 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 0 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 1 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 1 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 1 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 1 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 2 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 2 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 2 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 2 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 3 MonoMaker 0 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 3 MonoMaker 0 initial 1: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 3 MonoMaker 1 initial 0: on/off/interior mismatches 0/0/0
+  48000 Hz block 512 OS 3 MonoMaker 1 initial 1: on/off/interior mismatches 0/0/0
+Test 76 extension: finite endpoints, exceptional interpolation and unchanged normal bits (R-01)
+  block 1 OS 0 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 1 OS 0 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 0 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 0 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 1 OS 0 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 0 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 1 OS 0 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 1 OS 0 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 0 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 0 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 1 OS 0 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 0 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 1 OS 1 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 1 OS 1 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 1 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 1 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 1 OS 1 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 1 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 1 OS 1 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 1 OS 1 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 1 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 1 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 1 OS 1 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 1 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 1 OS 3 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 1 OS 3 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 3 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 3 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 1 OS 3 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 3 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+  block 1 OS 3 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 1 OS 3 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 1 OS 3 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 1 OS 3 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 1 OS 3 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 1 OS 3 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+  block 64 OS 0 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 64 OS 0 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 0 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 0 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 64 OS 0 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 0 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 64 OS 0 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 64 OS 0 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 0 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 0 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 64 OS 0 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 0 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 64 OS 1 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 64 OS 1 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 1 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 1 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 64 OS 1 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 1 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 64 OS 1 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 64 OS 1 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 1 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 1 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 64 OS 1 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 1 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 64 OS 3 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 64 OS 3 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 3 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 3 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 64 OS 3 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 3 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+  block 64 OS 3 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 64 OS 3 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 64 OS 3 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 64 OS 3 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 64 OS 3 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 64 OS 3 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+  block 512 OS 0 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 512 OS 0 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 0 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 0 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 512 OS 0 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 0 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 512 OS 0 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.687 float eps
+  block 512 OS 0 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 0 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 0 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.490 float eps
+  block 512 OS 0 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 0 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.853/2.361 float eps
+  block 512 OS 1 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 512 OS 1 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 1 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 1 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 512 OS 1 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 1 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 512 OS 1 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.689 float eps
+  block 512 OS 1 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 1 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 1 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.473 float eps
+  block 512 OS 1 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 1 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.451/1.817 float eps
+  block 512 OS 3 channel 0 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 512 OS 3 channel 0 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 3 channel 0 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 3 channel 0 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 512 OS 3 channel 0 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 3 channel 0 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+  block 512 OS 3 channel 1 profile 0: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.499/0.706 float eps
+  block 512 OS 3 channel 1 profile 1: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.375/0.516 float eps
+  block 512 OS 3 channel 1 profile 2: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.284/0.409 float eps
+  block 512 OS 3 channel 1 profile 3: unsafe target interiors 958, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.250/0.494 float eps
+  block 512 OS 3 channel 1 profile 4: unsafe target interiors 478, bad endpoints/normal/wide 0/0/0/0, curve/step error 0.734/0.866 float eps
+  block 512 OS 3 channel 1 profile 5: unsafe target interiors 0, bad endpoints/normal/wide 0/0/0/0, curve/step error 1.572/1.940 float eps
+State test: A/B active-slot clamp on corrupted state
+
+5775 checks, 0 failures
+ALL TESTS PASSED
