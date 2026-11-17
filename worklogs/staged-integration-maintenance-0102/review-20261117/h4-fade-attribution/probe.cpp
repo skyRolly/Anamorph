@@ -9,7 +9,7 @@
 
 using M = anamorph::MultibandWidth;
 using X = anamorph::LR4Xover;
-namespace access {
+namespace h4_attrib_access {
 struct Banks { friend auto member(Banks); };
 struct Active { friend auto member(Active); };
 struct Fading { friend auto member(Fading); };
@@ -28,19 +28,19 @@ template struct Get<S3, &X::s3>; template struct Get<S4, &X::s4>;
 }
 static bool same(float a,float b) { return std::memcmp(&a,&b,sizeof a)==0; }
 static bool stateFinite(const X& f,int c) {
- using namespace access;
+ using namespace h4_attrib_access;
  return std::isfinite((f.*member(S1{}))[c]) && std::isfinite((f.*member(S2{}))[c])
      && std::isfinite((f.*member(S3{}))[c]) && std::isfinite((f.*member(S4{}))[c]);
 }
 static bool sameState(const X& a,const X& b,int c) {
- using namespace access;
+ using namespace h4_attrib_access;
  return same((a.*member(S1{}))[c],(b.*member(S1{}))[c])
      && same((a.*member(S2{}))[c],(b.*member(S2{}))[c])
      && same((a.*member(S3{}))[c],(b.*member(S3{}))[c])
      && same((a.*member(S4{}))[c],(b.*member(S4{}))[c]);
 }
 int main(int argc,char** argv) {
- using namespace access;
+ using namespace h4_attrib_access;
  const std::string mode=argc>1?argv[1]:"positive";
  if(mode!="positive"&&mode!="bad-attribution"&&mode!="bad-bank"&&mode!="bad-arithmetic")return 2;
  juce::ScopedNoDenormals noDenormals;

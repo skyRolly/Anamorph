@@ -1,0 +1,38 @@
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp:12:11: error: ‘namespace access { }’ redeclared as different kind of entity
+   12 | namespace access {
+      |           ^~~~~~
+In file included from /usr/include/c++/14/bits/atomic_wait.h:46,
+                 from /usr/include/c++/14/bits/atomic_base.h:42,
+                 from /usr/include/c++/14/atomic:50,
+                 from /workspace/JUCE-905-numerical-independent/modules/juce_core/system/juce_StandardHeader.h:68,
+                 from /workspace/JUCE-905-numerical-independent/modules/juce_core/juce_core.h:215,
+                 from /workspace/JUCE-905-numerical-independent/modules/juce_audio_basics/juce_audio_basics.h:66,
+                 from /workspace/JUCE-905-numerical-independent/modules/juce_dsp/juce_dsp.h:67,
+                 from /workspace/numerical-main230-independent/src/dsp/MultibandWidth.h:3,
+                 from /workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp:3:
+/usr/include/unistd.h:287:12: note: previous declaration ‘int access(const char*, int)’
+  287 | extern int access (const char *__name, int __type) __THROW __nonnull ((1));
+      |            ^~~~~~
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp: In function ‘bool stateFinite(const X&, int)’:
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp:31:18: error: ‘access’ is not a namespace-name
+   31 |  using namespace access;
+      |                  ^~~~~~
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp: In function ‘bool sameState(const X&, const X&, int)’:
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp:36:18: error: ‘access’ is not a namespace-name
+   36 |  using namespace access;
+      |                  ^~~~~~
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp: In function ‘int main(int, char**)’:
+/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp:43:18: error: ‘access’ is not a namespace-name
+   43 |  using namespace access;
+      |                  ^~~~~~
+Traceback (most recent call last):
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 209, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/numerical-main230-independent/worklogs/dsp-numerical-audit-0102/relink_verified.py", line 130, in main
+    subprocess.run(cc, cwd=build, check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/usr/bin/c++', '-DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1', '-DJUCE_MODULE_AVAILABLE_juce_audio_basics=1', '-DJUCE_MODULE_AVAILABLE_juce_audio_formats=1', '-DJUCE_MODULE_AVAILABLE_juce_core=1', '-DJUCE_MODULE_AVAILABLE_juce_data_structures=1', '-DJUCE_MODULE_AVAILABLE_juce_dsp=1', '-DJUCE_MODULE_AVAILABLE_juce_events=1', '-DJUCE_OPENGL_ES=0', '-DJUCE_STANDALONE_APPLICATION=1', '-DJUCE_USE_CURL=0', '-DJUCE_USE_MP3AUDIOFORMAT=0', '-DJUCE_USE_OPUS=0', '-DJUCE_USE_WEBP=0', '-DJUCE_WEB_BROWSER=0', '-DLINUX=1', '-DNDEBUG=1', '-D_NDEBUG=1', '-I/workspace/numerical-main230-verified/fresh-build/AnamorphTests_artefacts/JuceLibraryCode', '-I/workspace/numerical-main230-independent/src', '-I/workspace/numerical-main230-independent/src/dsp', '-I/workspace/JUCE-905-numerical-independent/modules', '-O3', '-DNDEBUG', '-std=c++23', '-fstack-protector-strong', '-ffunction-sections', '-fdata-sections', '-g', '-march=haswell', '-ffp-contract=off', '-O3', '-Wall', '-Wextra', '-Wpedantic', '-Wstrict-aliasing', '-Wuninitialized', '-Wunused-parameter', '-Wsign-compare', '-Wsign-conversion', '-Wunreachable-code', '-Wcast-align', '-Wno-implicit-fallthrough', '-Wno-maybe-uninitialized', '-Wno-ignored-qualifiers', '-Wno-multichar', '-Wswitch-enum', '-Wredundant-decls', '-Wno-strict-overflow', '-Wshadow', '-Wfloat-equal', '-Wmissing-field-initializers', '-Woverloaded-virtual', '-Wreorder', '-Wzero-as-null-pointer-constant', '-MD', '-MT', '/workspace/h4-fade-attribution-main230/probe.o', '-MF', '/workspace/h4-fade-attribution-main230/probe.o.d', '-o', '/workspace/h4-fade-attribution-main230/probe.o', '-c', '/workspace/h4-fade-attribution-main230/packet/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp']' returned non-zero exit status 1.
