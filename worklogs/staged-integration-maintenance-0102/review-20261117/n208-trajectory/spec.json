@@ -15,13 +15,25 @@
       "program": "n208-trajectory",
       "args": ["trajectory"],
       "expected_exit": 0,
-      "stdout_contains": ["trajectory amplitude=0.95 glide=0 variant=0", "trajectory amplitude=0.95 glide=1 variant=2", "trajectory failures=0"]
+      "stdout_contains": ["trajectory amplitude=0.95 glide=0 variant=0 first_bad=1 widened1=1 widened2=0 ordinary_mismatch=0", "trajectory amplitude=0.95 glide=1 variant=2 first_bad=-1 widened1=3 widened2=0 ordinary_mismatch=0", "trajectory failures=0"]
     },
     {
       "program": "n208-trajectory",
       "args": ["small"],
       "expected_exit": 0,
       "stdout_contains": ["trajectory amplitude=0.1 glide=0 variant=0", "trajectory amplitude=0.1 glide=1 variant=2", "trajectory failures=0"]
+    },
+    {
+      "program": "n208-trajectory",
+      "args": ["ordinary"],
+      "expected_exit": 0,
+      "stdout_contains": ["trajectory amplitude=0.5 glide=0 variant=0 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0", "trajectory amplitude=0.5 glide=1 variant=2 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0", "trajectory failures=0"]
+    },
+    {
+      "program": "n208-trajectory",
+      "args": ["false-single-step"],
+      "expected_exit": 1,
+      "stdout_contains": ["FAIL false claim that one widened step protects the complete selected trajectory", "trajectory failures=2"]
     }
   ]
 }

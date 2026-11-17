@@ -99,7 +99,11 @@ TrajectoryResult trajectory(anamorph::LR4Xover source, int mode, bool glide)
         const float high = yL - r2*yB + yH - yL2;
         float expectedLow, expectedHigh; original.processSample(0, input, expectedLow, expectedHigh);
         if (!previouslyWidened && (std::memcmp(&yL2, &expectedLow, sizeof(float)) != 0
-            || std::memcmp(&high, &expectedHigh, sizeof(float)) != 0)) ++result.ordinaryMismatch;
+            || std::memcmp(&high, &expectedHigh, sizeof(float)) != 0
+            || std::memcmp(&s1, &(original.*member(S1{}))[0], sizeof(float)) != 0
+            || std::memcmp(&s2, &(original.*member(S2{}))[0], sizeof(float)) != 0
+            || std::memcmp(&s3, &(original.*member(S3{}))[0], sizeof(float)) != 0
+            || std::memcmp(&s4, &(original.*member(S4{}))[0], sizeof(float)) != 0)) ++result.ordinaryMismatch;
         if (!std::isfinite(yL2) || !std::isfinite(high) || !std::isfinite(s1)
             || !std::isfinite(s2) || !std::isfinite(s3) || !std::isfinite(s4)) {
             result.firstBad = i;
@@ -121,7 +125,8 @@ void run(const char* mode, float amplitude, bool dip)
     auto e = std::make_unique<E>(); e->primeParameters(p); e->prepare(48000, n);
     juce::AudioBuffer<float> b(2, n);
     for (int block = 0; block < 8; ++block) { b.clear(); e->process(b); }
-    b.clear(); b.setSample(0, n-1, std::numeric_limits<float>::max() * amplitude); e->process(b);
+    const float pulse = std::string(mode) == "ordinary" ? amplitude : std::numeric_limits<float>::max() * amplitude;
+    b.clear(); b.setSample(0, n-1, pulse); e->process(b);
     const float wetL = b.getSample(0, n-1), wetR = b.getSample(1, n-1);
     auto& banks = (e.get()->*member(MB{})).*member(Banks{});
     const int active = (e.get()->*member(MB{})).*member(Active{});
@@ -136,14 +141,24 @@ void run(const char* mode, float amplitude, bool dip)
     // input is known here: Velvet Amount is zero, then global Width is zero.
     // The copy cannot change the engine's subsequent production processing.
     auto filter = banks[active].x[0];
-    if (std::string(mode) == "trajectory" || std::string(mode) == "small") {
+    if (std::string(mode) == "trajectory" || std::string(mode) == "small"
+        || std::string(mode) == "ordinary" || std::string(mode) == "false-single-step") {
         for (bool glide : {false, true}) for (int variant = 0; variant < 3; ++variant) {
             const auto t = trajectory(filter, variant, glide);
             std::printf("trajectory amplitude=%g glide=%d variant=%d first_bad=%d widened1=%d widened2=%d ordinary_mismatch=%d\n",
                         amplitude, glide, variant, t.firstBad, t.widened1, t.widened2, t.ordinaryMismatch);
             if (t.ordinaryMismatch != 0) ++trajectoryFailures;
-            if (std::string(mode) == "trajectory" && t.widened1 == 0) ++trajectoryFailures;
-            if (std::string(mode) == "small" && (t.firstBad != -1 || t.widened1 || t.widened2)) ++trajectoryFailures;
+            if (std::string(mode) == "trajectory" || std::string(mode) == "false-single-step") {
+                if ((variant == 0 && (t.firstBad != 1 || t.widened1 != 1))
+                    || (variant != 0 && (t.firstBad != -1 || t.widened1 != 3 || t.widened2 != 0)))
+                    ++trajectoryFailures;
+                if (std::string(mode) == "false-single-step" && variant == 0 && t.firstBad != -1) {
+                    std::puts("FAIL false claim that one widened step protects the complete selected trajectory");
+                    ++trajectoryFailures;
+                }
+            }
+            if ((std::string(mode) == "small" || std::string(mode) == "ordinary")
+                && (t.firstBad != -1 || t.widened1 || t.widened2)) ++trajectoryFailures;
         }
     }
     float inputL = .2f, inputR = .1f, loL, hiL, loR, hiR;
@@ -229,7 +244,7 @@ int main(int argc, char** argv)
     juce::ScopedNoDenormals noDenormals;
     if (argc > 1) {
         const std::string mode(argv[1]);
-        run(mode.c_str(), mode == "small" ? .1f : .95f, mode != "no-dip");
+        run(mode.c_str(), mode == "small" ? .1f : mode == "ordinary" ? .5f : .95f, mode != "no-dip");
         std::printf("trajectory failures=%d\n", trajectoryFailures);
         return trajectoryFailures ? 1 : 0;
     }
