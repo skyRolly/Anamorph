@@ -25,15 +25,20 @@ including in entries written before 0.9.9 gave it that name.
 
 ### Fixed
 
+- **Valid conditioned dry history survives processed-output self-healing.**
+  An unrelated invalid processed sample no longer clears finite delayed dry
+  samples; invalid conditioned history is still replaced with zero.
+  Evidence: commit `d1e627f5e7921f0d5a0834e5fbc0b83eae9ceb43`; DSP Test 59 extension; ADR-0009. [Verified]
+
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
   destinations still wait for the complete-state duck bottom.
-  Evidence: DSP Test 77 / State Test 159; ADR-0004 N2-02 correction. [Verified]
+  Evidence: PR #238; DSP Test 77 / State Test 159; ADR-0004 N2-02 correction. [Verified]
 
 - **Multiband Enable fades land on the exact processed and dry-reference endpoints.**
   The terminal sample and the rest of its block retain the destination bits;
   interior fades keep their existing arithmetic. Evidence: Test 23 endpoint
-  extension, ADR-0004 and ADR-0005 implementation notes. [Verified]
+  extension, ADR-0004 and ADR-0005 implementation notes; PR #239. [Verified]
 
 - **Bypass retains valid raw audio when extreme input overflows the processed signal.**
   The unaffected channel and later delay-aligned samples no longer disappear during
