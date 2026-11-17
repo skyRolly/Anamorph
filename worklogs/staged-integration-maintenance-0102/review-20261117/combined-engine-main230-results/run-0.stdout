@@ -1,0 +1,20 @@
+Test 59 extension: self-heal preserves finite conditioned dry history (N2-04)
+  selected factor 2, bad channel 0, latency 4: observed heal 1, current/history 1/1
+  selected factor 2, bad channel 1, latency 4: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 4, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 0, latency 6: observed heal 1, current/history 1/1
+  selected factor 8, bad channel 1, latency 6: observed heal 1, current/history 1/1
+  actual wrapped algorithm 2 factor 2 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 2 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 2 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 2 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 4 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 4 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 4 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 4 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 8 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 2 factor 8 bad channel 1: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 8 bad channel 0: wrap/heal/history 1/1/1
+  actual wrapped algorithm 3 factor 8 bad channel 1: wrap/heal/history 1/1/1
+selector=n204 125 checks, 0 failures

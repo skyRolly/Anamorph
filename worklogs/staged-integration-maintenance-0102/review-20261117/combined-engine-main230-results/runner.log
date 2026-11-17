@@ -1,0 +1,29 @@
+In file included from /workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/harness.cpp:16:
+/workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h: In function ‘void n2_mix_endpoint_tests::test()’:
+/workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h:192:53: warning: declaration of ‘dry’ shadows a previous local [-Wshadow]
+  192 |                 for(int ch=0;ch<2;++ch){const float dry=ch==0?amplitude:-amplitude,wet=referenceWet.getSample(ch,i);
+      |                                                     ^~~
+/workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h:118:57: note: shadowed declaration is here
+  118 |     const int latency=poison->getLatencySamples();auto& dry=poison.get()->*member(Dry{});
+      |                                                         ^~~
+In file included from /workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/harness.cpp:19:
+/workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_control_tests.h: In function ‘void testCrossfadedControlsDuringOrdinaryDuck()’:
+/workspace/combined-engine-main230-positive-b182/packet/worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_control_tests.h:51:58: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   51 |             controlUnducked &= c.get()->*member(Phase{}) == 1.0f;
+      |                                ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp: In member function ‘juce::dsp::Oversampling<float>* anamorph::AnamorphEngine::currentOversampler()’:
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:1095:12: warning: enumeration value ‘Off’ not handled in switch [-Wswitch-enum]
+ 1095 |     switch (p.oversample)
+      |            ^
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp: In member function ‘void anamorph::AnamorphEngine::process(juce::AudioBuffer<float>&)’:
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:2332:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+ 2332 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |         ^~
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:2332:32: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+ 2332 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |                                ^~
+run 0 exit 0 expected 0
+run 1 exit 0 expected 0
+run 2 exit 0 expected 0
+run 3 exit 0 expected 0
+run 4 exit 0 expected 0
