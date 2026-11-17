@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n202-forced mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "0ea2299b4f9f0ea66fffefbe27e317aad89af7de",
+  "source_tree": "1dadd8efaffa24529dacf342bdd52cf84f013d4c",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n202-forced.patch",
+    "sha256": "b275d5c0e768954f0425894f339ef8ce21fde7d2d5d8384937ac0911889e06e0",
+    "purpose": "Restore or perturb only n202-forced as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n202"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n202"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    }
+  ]
+}

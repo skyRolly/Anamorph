@@ -1,0 +1,9 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..7b3ea260 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2003,2 +2003,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-                L[i] = blendMultibandEnableSample (pmL[i], L[i], b);
+-                R[i] = blendMultibandEnableSample (pmR[i], R[i], b);
++                L[i] = pmL[i] + b * (L[i] - pmL[i]);
++                R[i] = pmR[i] + b * (R[i] - pmR[i]);

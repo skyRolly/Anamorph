@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n207-unguarded mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "0ea2299b4f9f0ea66fffefbe27e317aad89af7de",
+  "source_tree": "2efc2b880239a000d7da6f585742e0946884bb1b",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n207-unguarded.patch",
+    "sha256": "cc77fd833055b436813d8d2eca83a219cb8f20d7ec140daa1f21fc8598bddcf1",
+    "purpose": "Restore or perturb only n207-unguarded as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n207"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n207"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    }
+  ]
+}

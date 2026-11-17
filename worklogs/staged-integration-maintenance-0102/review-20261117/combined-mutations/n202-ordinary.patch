@@ -1,0 +1,16 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..cf325c9d 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -841 +841 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
+-    const auto hs = dst.haasSide;    const auto dm = dst.dimMode;
++    const auto hs = dst.haasSide;    const auto dm = dst.dimMode; const auto mb = dst.mbEnable;
+@@ -843 +843 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
+-    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample;
++    const auto mm = dst.monoMakerEnable; const auto ov = dst.oversample; const auto by = dst.bypass;
+@@ -849 +849 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
+-    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm;
++    dst.algorithm = al;   dst.haasSide = hs; dst.dimMode = dm; dst.mbEnable = mb;
+@@ -851 +851 @@ void AnamorphEngine::copyContinuous (EngineParameters& dst, const EngineParamete
+-    dst.monoMakerEnable = mm; dst.oversample = ov; dst.autoGainMatch = ag;
++    dst.monoMakerEnable = mm; dst.oversample = ov; dst.bypass = by; dst.autoGainMatch = ag;

@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n207-right-smoothing mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "0ea2299b4f9f0ea66fffefbe27e317aad89af7de",
+  "source_tree": "34a5c9a57db41ecc1885295dc683234fa25f7391",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n207-right-smoothing.patch",
+    "sha256": "db6be520085a0f44aaa25501739b40f728d8c29e65c8d14a58edcff6dc7c76cd",
+    "purpose": "Restore or perturb only n207-right-smoothing as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n207"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n207"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    }
+  ]
+}
