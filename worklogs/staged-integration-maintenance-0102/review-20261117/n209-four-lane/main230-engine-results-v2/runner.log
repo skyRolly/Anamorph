@@ -1,0 +1,23 @@
+/workspace/n209-four-lane-main230-engine-v2/packet/worklogs/staged-integration-maintenance-0102/review-20261117/n209-four-lane/probe.cpp: In function ‘void observe(int, int, float, float, float, float, float)’:
+/workspace/n209-four-lane-main230-engine-v2/packet/worklogs/staged-integration-maintenance-0102/review-20261117/n209-four-lane/probe.cpp:48:6: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   48 |  if(b==0.0f){++stats.zero;if(!bits(result,from))++stats.endpointBad;}
+      |     ~^~~~~~
+/workspace/n209-four-lane-main230-engine-v2/packet/worklogs/staged-integration-maintenance-0102/review-20261117/n209-four-lane/probe.cpp:49:6: warning: comparing floating-point with ‘==’ or ‘!=’ is unsafe [-Wfloat-equal]
+   49 |  if(b==1.0f){++stats.one;if(!bits(result,to))++stats.endpointBad;}
+      |     ~^~~~~~
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp: In member function ‘juce::dsp::Oversampling<float>* anamorph::AnamorphEngine::currentOversampler()’:
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:1101:12: warning: enumeration value ‘Off’ not handled in switch [-Wswitch-enum]
+ 1101 |     switch (p.oversample)
+      |            ^
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp: In member function ‘void anamorph::AnamorphEngine::process(juce::AudioBuffer<float>&)’:
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:2353:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+ 2353 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |         ^~
+/workspace/combined-engine-main230-diagnostic/src/dsp/AnamorphEngine.cpp:2353:32: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+ 2353 |         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
+      |                                ^~
+run 0 exit 0 expected 0
+run 1 exit 1 expected 1
+run 2 exit 1 expected 1
+run 3 exit 1 expected 1
+run 4 exit 1 expected 1
