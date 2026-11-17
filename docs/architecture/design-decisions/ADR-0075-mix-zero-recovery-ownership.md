@@ -111,3 +111,25 @@ the independent N2-04 correction was included. Its injection is deliberate,
 its enclosing session exit was not observed, and its selected numerical outputs
 were separately inspected. These scoped results do not establish a complete
 recovery contract, final-main behavior, native performance or owner acceptance.
+
+## Combined-engine boundary follow-up (2026-11-17)
+
+A [source-bound selected-boundary comparison](https://github.com/skyRolly/Anamorph/tree/e48de7dc5e67b4ed10583693a978accdbbd721dc/worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/results)
+used main `230da0e2` verified build objects and the combined b182 production
+engine, with N2-04, N2-06 and N2-07 present. At both zero and actual x4/six-
+sample latency, deliberately injected invalid Wet state caused the combined
+engine to lose the 128-sample stereo fault block; naive Dry selection preserved
+it but left Wet invalid and lost 128 samples at re-entry. A reset-indication
+diagnostic preserved 128/128 selected fault and next-block Dry samples, healed
+the monitored Wet state and produced no selected re-entry zeros. Assertions
+against the selected recovery contract failed for the first two variants and
+passed for the diagnostic. All recorded executable exits and output hashes
+were independently rechecked; the enclosing session exit was unobserved.
+
+The indication detects a non-finite difference, not its source, and can miss
+hidden state whose current output is finite. This injection does not establish
+natural reachability, complete Match behavior, all valid state/history
+preservation, repeated recovery, reset/re-prepare, allocation or cost. The
+result advances the comparison; it does not select option 2 or establish an
+accepted recovery contract. Actual post-integration main still needs its own
+source identity and validation.

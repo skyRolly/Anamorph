@@ -7883,3 +7883,12 @@ A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a
 ## H4 first-consumption and N2-09 follow-up (2026-11-15)
 
 The [nonshipping history trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observes actual aligned history writes and latency-offset Mix reads after injected invalid dry state. The [independent production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) establishes N2-09: an extreme finite input causes an interior Enable overflow, aligned-history write/read and self-heal. The 216-case [unpatched secondary search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) did not find the separate dry-source interpolation failure exposed by a diagnostic fallback; this is a bounded negative result. These do not establish a complete H4 policy or change Test 25.
+
+## Nonshipping N2-05 combined-engine boundary (2026-11-17)
+
+A [receipt-controlled comparison](https://github.com/skyRolly/Anamorph/tree/e48de7dc5e67b4ed10583693a978accdbbd721dc/worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/results)
+checks deliberate invalid Wet-state injection at Mix=0 with the independent
+N2-04 correction present, at zero and actual x4 latency. The selected contract
+fails for the combined engine and naive Dry-only control, and passes for the
+reset-indication diagnostic. This is not a natural-reachability or complete
+recovery-policy claim; Proposed ADR-0075 describes its limits.
