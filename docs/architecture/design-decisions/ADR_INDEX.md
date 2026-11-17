@@ -77,6 +77,7 @@ Status values: Proposed · Accepted · Deprecated · Superseded.
 | [ADR-0072](ADR-0072-wheel-callback-lifetime-review.md) | NR-026 wheel callback lifetime and gesture ownership review | **Accepted — B2 architecture, owner approval 2026-11-06** | Stable interaction record, exact-once gesture and processor Undo; B1 rejected; implementation validation/review/merge remain separate |
 | [ADR-0073](ADR-0073-linux-ci-environments.md) | Linux shipping ABI and TSan environments across the Ubuntu 26.04 rollout | **Accepted — explicit owner approval 2026-11-09 (Asia/Shanghai); Architecture Review Gate approved and cleared** | Corrected Linux and TSan jobs passed on PR #231's final head and after merge `130bb7e87f1b7757236a3bae5e587915908042bf` ([post-merge CI](https://github.com/skyRolly/Anamorph/actions/runs/42498827779)); original environment comparisons and failed retries remain recorded in the ADR |
 | [ADR-0074](ADR-0074-h4-dry-state-reentry.md) | H4 dry-state continuity and guarded warm-bank tradeoff | **Proposed — owner decision pending** | N2-01/V2-01 measured transient, candidate recovery and CPU assessment; no H4 production correction approved |
+| [ADR-0075](ADR-0075-mix-zero-recovery-ownership.md) | Mix-zero output selection and recovery ownership | **Proposed — owner decision pending** | N2-05 detection, reset scope, valid histories and Match behavior; no production change approved |
 
 ## Owner approval reconciliation — record updated 2026-10-24
 
