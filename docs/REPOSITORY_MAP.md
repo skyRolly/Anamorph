@@ -405,3 +405,5 @@ The [0.10.2 second DSP audit archive](../worklogs/dsp-numerical-audit-0102/READM
 - `worklogs/MULTIBAND_ENDPOINTS_0.10.2.md`, `worklogs/n2-endpoints-0102/` — N2-03 source identities, controls, logs and portable replay.
 
 - [Independent H4 recovery follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) — committed nonshipping policy, history and N2-09 evidence at reviewed source `70bbdc22`.
+
+- `tests/n2_conditioned_history_tests.h`, `worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md` — N2-04 self-heal history regression and scoped evidence.
