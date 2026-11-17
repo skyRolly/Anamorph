@@ -19454,3 +19454,9 @@ separate. Historical audit files and measurements are unchanged.
 An initial hosted MSVC build exposed an undeduced friend-return test-helper
 error; the regression now uses the existing explicitly typed access pattern.
 The failed attempt remains recorded separately from new-head validation.
+
+## N2-06 Unreleased evidence — 2026-11-17
+
+The pre-edit audit found the Mix endpoint entry cited tests but omitted an
+implementing Evidence Source and verification marker. Added PR #244 and the
+existing automated verification status; no user-visible scope changed.

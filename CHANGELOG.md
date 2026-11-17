@@ -28,8 +28,8 @@ including in entries written before 0.9.9 gave it that name.
 - **Mix at 100% preserves the finite processed sample.** When the delayed dry
   and Wet operands are finite, selecting Wet avoids cancellation at the exact
   endpoint; interior Mix arithmetic and non-finite self-healing remain intact.
-  Evidence: the N2-06 actual-engine endpoint and existing Multiband Enable
-  regression controls.
+  Evidence: PR #244; N2-06 actual-engine endpoint and Multiband Enable
+  regression controls. [Verified]
 
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
