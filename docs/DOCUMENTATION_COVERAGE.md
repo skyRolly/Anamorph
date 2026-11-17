@@ -19476,3 +19476,11 @@ retained; Test 25 and original evidence remain untouched.
 The recovery-policy comparison was also refreshed to distinguish the completed
 actual-main replay and selected allocation observations from its dated earlier
 unknowns, without treating those observations as a complete contract.
+
+## H4 live-fade attribution evidence — 2026-11-17
+
+The pre-edit drift review found the H4 follow-up still described output-only
+bank attribution as unresolved without the new direct-module arithmetic
+boundary. Updated the follow-up, Proposed ADR-0074 and TESTING to identify the
+selected injected-state result, false-claim controls and limits. No production
+DSP, accepted decision, Test 25 assertion or threshold changes.

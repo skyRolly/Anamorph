@@ -81,3 +81,26 @@ the integrated source. Its receipt records all seven executions; their streams
 and required artifact were independently rehashed, while the enclosing session
 exit was unobserved. The live-fade preservation observation is separate. No
 complete exceptional recovery policy or native performance claim follows.
+
+## Live-fade arithmetic attribution — 2026-11-17
+
+The [direct production-module control](https://github.com/skyRolly/Anamorph/tree/6b1bbe9b047b54d916b1f9d731e235430d869c72/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/main230-results)
+observed a two-bank fade with deliberately injected finite dry states: both
+bank outputs and their checked post-step states were finite, yet the float
+subtraction in the fade overflowed. A separate injected-NaN lane distinguished
+one invalid bank from a finite other bank. The positive passed 23/23 and three
+opposite claims failed 1/24 each. This is direct `MultibandWidth::processBlock`
+evidence on main `230da0e2`, not a full-engine reachability or recovery test.
+It supports separating bank-output attribution from fade-arithmetic validation:
+resetting both banks solely because the combined result is non-finite is not
+justified by this selected arithmetic failure. It does not prove that the
+injected states have valid histories, that any fallback is phase-matched, or
+that per-bank checks catch hidden invalid state or post-Enable overflow.
+
+The unresolved engineering question is the first-consumption and history
+trajectory under an explicit exceptional-output policy, including post-Enable
+validation and actual engine-level attribution. A finite replacement alone is
+insufficient. Continue targeted work or retain/defer the documented limitation;
+the owner has not accepted a recovery policy or H4 performance tradeoff. No
+bank-local candidate cost or native deadline result is inferred from historical
+A2/consumption-aware instruction figures.

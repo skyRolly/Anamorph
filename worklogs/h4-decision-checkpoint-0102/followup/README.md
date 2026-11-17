@@ -202,3 +202,17 @@ adds selected consumed-state, first-consumption and low-frequency checks plus
 the full DSP suite and negative history controls. The final run records and
 artifacts were independently rehashed; the outer session status was not
 observed. The affected-history and owner-policy limitations still apply.
+
+## Live-fade output attribution follow-up — 2026-11-17
+
+A [source-bound direct-module experiment](https://github.com/skyRolly/Anamorph/tree/6b1bbe9b047b54d916b1f9d731e235430d869c72/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/main230-results)
+on main `230da0e2` exercised an actual two-bank fade with deliberately injected
+states. Both individually computed bank outputs and their checked post-step
+states were finite in one lane, but their float fade subtraction overflowed;
+a separate lane injected a non-finite source bank while the destination stayed
+finite. The positive passed 23/23, and three false-claim controls failed 1/24
+each. Thus a non-finite combined output alone does not identify a failed bank;
+per-bank observations distinguish these selected categories. Injection is not
+natural reachability, and finite observed states are not a complete history or
+recovery guarantee. The experiment does not execute the full engine, prove a
+fallback or measure the bank-local candidate's cost. ADR-0074 remains Proposed.

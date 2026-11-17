@@ -180,3 +180,16 @@ command-session exit was not observed. Affected history still differs from a
 clean trajectory, and output-only fault attribution, later Enable arithmetic,
 an accepted exceptional-output policy and representative native cost remain
 open. **Status remains Proposed; no production implementation is authorized.**
+
+## Live-fade output attribution follow-up (2026-11-17)
+
+A [source-bound direct-module control](https://github.com/skyRolly/Anamorph/tree/6b1bbe9b047b54d916b1f9d731e235430d869c72/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/main230-results)
+exercised actual two-bank fade processing with deliberately injected states.
+Both bank outputs and checked states were finite in one lane while their float
+fade subtraction overflowed; another lane separated an injected invalid bank
+from a finite other bank. The positive passed 23/23 and three false-claim
+controls failed 1/24 each. Combined-output failure alone cannot attribute the
+fault to a bank. This does not establish natural reachability, valid recursive
+history, a full-engine fallback, post-Enable protection or native performance.
+The recovery and performance decision remains **Proposed**; no H4 production
+implementation or exceptional-output policy is accepted.

@@ -7894,3 +7894,12 @@ The [expanded bank-local controls](../../worklogs/h4-decision-checkpoint-0102/fo
 add selected first-consumption, state, low-frequency and full-DSP checks. Their
 negative controls and unobserved outer-session status are recorded; no complete
 exceptional recovery policy or production H4 correction is implied.
+
+## Nonshipping H4 fade-attribution probe (2026-11-17)
+
+A [receipt-controlled direct-module experiment](https://github.com/skyRolly/Anamorph/tree/6b1bbe9b047b54d916b1f9d731e235430d869c72/worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/main230-results)
+checks an actual two-bank fade and copied-filter state progression with
+intentionally injected finite and non-finite dry states. It distinguishes a
+fade arithmetic overflow with finite bank outputs from one invalid bank, with
+three sensitive false-claim controls. It is not a full-engine or naturally
+reachable recovery regression and does not alter Test 25 or shipping H4.
