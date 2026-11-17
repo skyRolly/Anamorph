@@ -71,9 +71,11 @@ A diagnostic dry-only exceptional widening prevented invalid Enable history
 writes in the historical selected trace but exposed a later dry-source
 interpolation overflow in that altered trajectory. The separate 216-case
 unpatched search found no independent occurrence of that secondary mechanism;
-this is not proof of impossibility. An engine trace specification and an
-engine-only observation patch for the combined rehearsal are committed under
-`n209-combined-trace/`; they are not yet a result or a production correction.
+this is not proof of impossibility. The [combined-engine trace](n209-combined-trace/main230-engine-results/README.md)
+reproduced the same selected dry-Enable/history failure with the three proposed
+production corrections present. It used an instrumented engine-only relink on
+verified main-230 objects, not the exact b182 full build or merged main. The
+dry-only widening remains a counterfactual, not a production correction.
 
 The next engineering step is to run that source-bound trace, then establish
 actual Wet and Dry call-site controls, exact endpoint and ordinary float-bit
