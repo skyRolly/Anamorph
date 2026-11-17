@@ -189,9 +189,9 @@ static void test()
             if(wasSmoothing)for(int i=0;i<127;++i)if(endpoint[i])
             {
                 ++wrappedTerminalSamples;
-                for(int ch=0;ch<2;++ch){const float dry=ch==0?amplitude:-amplitude,wet=referenceWet.getSample(ch,i);
+                for(int ch=0;ch<2;++ch){const float inputDry=ch==0?amplitude:-amplitude,wet=referenceWet.getSample(ch,i);
                     ++wrappedEndpointSamples;wrappedEndpointBad+=!bits(actualWet.getSample(ch,i),wet);
-                    caseLegacy+=!bits(dry+1.0f*(wet-dry),wet);}
+                    caseLegacy+=!bits(inputDry+1.0f*(wet-inputDry),wet);}
             }
         }
         wrappedLegacyDifferent+=caseLegacy;

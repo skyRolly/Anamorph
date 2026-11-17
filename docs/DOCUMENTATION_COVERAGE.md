@@ -19524,3 +19524,12 @@ The existing wrapped lane checked execution, clock and finiteness but did not
 independently compare the terminal production Mix output. Added an actual x4
 one-band wet-twin comparison and a legacy-expression sensitivity premise;
 TESTING records the selected scope.
+
+
+## N2-06 hosted warning-gate correction — 2026-11-17
+
+Exact head `e7824d8c` exposed a new `-Wshadow` site in the added wrapped test
+under both Clang and GCC LTO. Renamed the test-local input variable without
+changing the oracle or warning baselines. TESTING records the portability and
+warning-gate context; the failed hosted attempt remains separate from new-head
+validation.
