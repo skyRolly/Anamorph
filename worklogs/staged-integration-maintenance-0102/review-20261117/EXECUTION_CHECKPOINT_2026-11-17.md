@@ -32,7 +32,13 @@ human review obligation. Historical entries were not rewritten.
 
 Combined commit `d5e38a534cb2252476b0569ae6fda9ae66074dbb`, tree
 `65938e2ca5f0068f2ed404870a88a5d4da5673f4`, contains actual main and all three
-corrected heads. It is a disposable validation source, not merged main. The
+corrected heads. A subsequent source-relative current-issues correction gives
+`6466b740a7263aa02ede5b5fb9414282fd86042e` (tree
+`d90937f16a787a2a4f61c50dd61c16eedc372f2b`); only `KNOWN_ISSUES.md` and its
+documentation-coverage audit differ. It removes the stale pending-PR wording,
+identifies N2-05 as open, and makes no assertion that this branch is main.
+Before and after that edit, documentation and citation checks passed. The
+current disposable source is not merged main. The
 previous `b182cc0a` source had the same production files, and locally passed
 N2-04 125/125, N2-06 16/16, N2-07 20/20, N2-03 392/392, N2-02 720/720,
 full DSP 5775/0 and State 16555/0. Its hosted Build & Validate failed the
@@ -40,7 +46,8 @@ shadow warning in the new Mix test; its successful CodeQL and Microsoft
 analysis apply only to that historical head. The corrected `d5e38a53` local
 [fresh replay](combined-d5e-results/README.md) has since passed those same
 focused selectors and full DSP/State suites with an observed runner exit of 0;
-its hosted workflows remain separate. Earlier rejected and abandoned
+its hosted workflows and the 6466 source's fresh and hosted validation remain
+separate. Earlier rejected and abandoned
 attempts are retained in [stale-head-attempt](stale-head-attempt/README.md) and
 [combined-b182-results](combined-b182-results/README.md).
 
@@ -52,6 +59,9 @@ diagnostic build inputs. The archive
 under `worklogs/dsp-numerical-audit-0102/original` was compared against actual
 main and remains byte-identical. The research branch and the evidence
 prerequisite branch remain present; no automatic or manual deletion is planned.
+The [initial attempt](combined-mutation-initial/README.md) identified a
+downstream Mix dependency in the N2-03 output oracle, retained its expected
+failure, and corrected the control specification without changing test code.
 
 ## Independent research and owner decisions
 
