@@ -1,0 +1,33 @@
+{
+  "purpose": "R-245-02 right-channel actual-engine control: held; held fade is intentionally injected.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "3dbb8532999ddf12c5db194593bc3213cc4f7845",
+  "probes": [
+    {
+      "name": "drive-control",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/drive-harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/n2_drive_endpoint_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "drive-control",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL right held-envelope contribution",
+        "held_path=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/held.patch",
+    "sha256": "a6f38dbdc94147b1b44246d24cb7bec690975c5995601da2a21db164074fa34b",
+    "purpose": "Restore historical Drive expression only on the right channel at the held call site."
+  }
+}

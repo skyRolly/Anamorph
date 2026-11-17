@@ -1,0 +1,27 @@
+{
+  "purpose": "R-245-02 right-channel actual-engine control: baseline; held fade is intentionally injected.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "drive-control",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/drive-harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/n2_drive_endpoint_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "drive-control",
+      "args": [],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL right settled Drive endpoint",
+        "held_path=1"
+      ]
+    }
+  ]
+}
