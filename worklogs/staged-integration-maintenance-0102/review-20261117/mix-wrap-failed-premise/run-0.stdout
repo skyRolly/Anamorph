@@ -1,0 +1,5 @@
+N2-06: exact finite Mix=1 wet endpoint
+FAIL N2-06: wrapped terminal Mix selects the independently observed wet output
+  x4 terminal samples=114 mismatches=0 legacy-differences=0 latency=6
+  endpoint/interior/ramp/clock mismatches 0/0/0/0; discriminating legacy samples 1748
+16 checks, 1 failures
