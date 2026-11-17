@@ -1,0 +1,13 @@
+trajectory amplitude=0.95 glide=0 variant=0 first_bad=1 widened1=1 widened2=0 ordinary_mismatch=0
+FAIL false claim that one widened step protects the complete selected trajectory
+trajectory amplitude=0.95 glide=0 variant=1 first_bad=-1 widened1=3 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.95 glide=0 variant=2 first_bad=-1 widened1=3 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.95 glide=1 variant=0 first_bad=1 widened1=1 widened2=0 ordinary_mismatch=0
+FAIL false claim that one widened step protects the complete selected trajectory
+trajectory amplitude=0.95 glide=1 variant=1 first_bad=-1 widened1=3 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.95 glide=1 variant=2 first_bad=-1 widened1=3 widened2=0 ordinary_mismatch=0
+wet-filter-arithmetic mode=false-single-step coefficient=3.76347 s1=7.71683e+37 s2=1.81288e+38 product=2.9042e+38 finite=1 first_difference=-2.9042e+38 finite=1 numerator=-inf finite=0 wide_low=1.09965e+38 wide_high=-9.74081e+36 wide_max=1.48037e+38 representable=1
+wet-filter-one-wide-step mode=false-single-step low=1.09965e+38 high=-9.74081e+36 finite=1
+wet-filter-copy mode=false-single-step input=0.15,0.15 low=-inf,-inf high=-nan,-nan finite=0,0,0,0
+mode=false-single-step amplitude=0.95 dip=1 wet_last=5.25017e+37,5.25017e+37 wet_bad=0,0 wet_max=1.81288e+38,1.81288e+38 dry_bad=0,0 dry_max=0,0 next_zero=128,128 next_nonfinite=0,0 next_first=0,0
+trajectory failures=2

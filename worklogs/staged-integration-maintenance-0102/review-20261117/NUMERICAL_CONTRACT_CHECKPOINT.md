@@ -21,6 +21,16 @@ produced representable low/high output and next state for the first sample
 only. [Original trace and controls](https://github.com/skyRolly/Anamorph/blob/f511198dcf24b480579e61c47c4f5a949f1f1aa7/worklogs/h4-review-followup-0102/README.md)
 remain scoped to that observation.
 
+The later [copied-filter trajectory control](n208-trajectory/README.md)
+showed that widening that first numerator only still produced a non-finite
+output or state at the next sample for both selected fixed and changing cutoff
+sequences. A counterfactual that repeated first-numerator fallback stayed
+finite through the selected 128 copied-filter samples, using three fallbacks;
+the second-section fallback was not exercised. Ordinary and smaller selected
+controls matched actual LR4 output and state before any fallback. These results
+do not establish a complete filter correction, full-engine twin, bank fade,
+native cost or permission to alter the all-sequence JUCE contract.
+
 `LR4Xover.h` explicitly states expression-for-expression JUCE equivalence for
 every input and cutoff sequence, including float rounding. Widening only an
 exceptional numerator may preserve ordinary-input bits but changes the stated
@@ -77,20 +87,18 @@ production corrections present. It used an instrumented engine-only relink on
 verified main-230 objects, not the exact b182 full build or merged main. The
 dry-only widening remains a counterfactual, not a production correction.
 
-The next engineering step is to run that source-bound trace, then establish
-actual Wet and Dry call-site controls, exact endpoint and ordinary float-bit
-identity, invalid operand handling, aligned-history and Match behavior, and
-sensitive mutations for a complete candidate. If a candidate fits the existing
-accepted same-stage contract and its implementation-note clarification, it may
-be proposed in a separate PR; an actual change to an accepted numerical or
-architecture contract requires owner review and a Proposed decision. Do not
-infer this question is settled by the Bypass precedent alone. No new N2-09 PR
-or release acceptance is represented by this checkpoint.
+The subsequent [four-call-site control](n209-four-lane/main230-engine-results-v3/README.md)
+adds selected Wet and Dry L/R observations, exact endpoints, invalid-operand
+handling and omitted-call-site mutations. The
+[proposed numerical decision](N2_09_PROPOSED_NUMERICAL_DECISION.md) records the
+remaining contract conflict and full-production verification still required.
+The Bypass precedent alone does not settle it. No new N2-09 production PR or
+release acceptance is represented by this checkpoint.
 
 ## N2-05 and H4 boundaries
 
 A separate documentation-only [draft PR #246](https://github.com/skyRolly/Anamorph/pull/246)
-contains Proposed ADR-0075 at `b1f407d0afdc6dfef4fe13eeb73ae79b25802a81`.
+contains Proposed ADR-0075, updated to `132b41ea550cde0fdd39926b66dc585e2510b543`.
 It preserves Accepted ADR-0009 and does not select or authorize an early Wet
 recovery detector. The selected naive Dry-only and reset-indication experiments
 remain narrower than a complete recovery policy. ADR-0074 remains Proposed.

@@ -1,0 +1,11 @@
+trajectory amplitude=0.5 glide=0 variant=0 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.5 glide=0 variant=1 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.5 glide=0 variant=2 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.5 glide=1 variant=0 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.5 glide=1 variant=1 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+trajectory amplitude=0.5 glide=1 variant=2 first_bad=-1 widened1=0 widened2=0 ordinary_mismatch=0
+wet-filter-arithmetic mode=ordinary coefficient=3.76347 s1=0.119356 s2=0.280398 product=0.449194 finite=1 first_difference=-0.299194 finite=1 numerator=-0.579592 finite=1 wide_low=0.217257 wide_high=-0.0135174 wide_max=0.277267 representable=1
+wet-filter-one-wide-step mode=ordinary low=0.217257 high=-0.0135174 finite=1
+wet-filter-copy mode=ordinary input=0.15,0.15 low=0.217257,0.217257 high=-0.0135174,-0.0135174 finite=1,1,1,1
+mode=ordinary amplitude=0.5 dip=1 wet_last=0.0812046,0.0812046 wet_bad=0,0 wet_max=0.280398,0.280398 dry_bad=0,0 dry_max=0,0 next_zero=0,0 next_nonfinite=0,0 next_first=0.203667,0.20365
+trajectory failures=0
