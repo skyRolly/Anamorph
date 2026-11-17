@@ -7883,3 +7883,21 @@ A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a
 ## H4 first-consumption and N2-09 follow-up (2026-11-15)
 
 The [nonshipping history trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observes actual aligned history writes and latency-offset Mix reads after injected invalid dry state. The [independent production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) establishes N2-09: an extreme finite input causes an interior Enable overflow, aligned-history write/read and self-heal. The 216-case [unpatched secondary search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) did not find the separate dry-source interpolation failure exposed by a diagnostic fallback; this is a bounded negative result. These do not establish a complete H4 policy or change Test 25.
+
+## Finite Mix=1 Wet endpoint (N2-06)
+
+`AnamorphTests --mix-wet-endpoint` exercises actual engine output with an
+independently calculated Wet, historical interior arithmetic, a Mix ramp
+ending inside a block, the smoother clock and the extreme cancellation witness.
+Selected non-finite dry and Wet controls check that the existing final-output
+self-heal remains observable; a selected x4 stand-in and actual nonlinear x4
+wrap exercise the latency and smoother premises separately. At the terminal
+x4 sample, a one-band H4 wet twin supplies an output comparison and a
+legacy-expression sensitivity premise. The existing
+`--multiband-endpoints` oracle models the corrected Mix=1 boundary while still
+checking actual Match-on and Match-off Enable output. It does not independently
+verify the complete Level-Match algorithm. Existing Test 25 is unchanged.
+The test's private-state access uses explicitly typed friend declarations so
+the same regression compiles under MSVC as well as GCC and Clang. The wrapped
+comparison uses distinct local names so the GCC and Clang warning gates remain
+active without a baseline exception.

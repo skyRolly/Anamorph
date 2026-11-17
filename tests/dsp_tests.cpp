@@ -14791,6 +14791,8 @@ static void testBypassExactEndpoints()
 
 #include "n2_endpoint_tests.h"
 
+#include "n2_mix_endpoint_tests.h"
+
 int main (int argc, char* argv[])
 {
     if (argc > 1 && std::strcmp(argv[1], "--n2-controls") == 0) { testCrossfadedControlsDuringOrdinaryDuck(); std::printf("%d checks, %d failures\n",checks,failures); return failures==0?0:1; }
@@ -14808,6 +14810,13 @@ int main (int argc, char* argv[])
     if (argc > 1 && std::strcmp (argv[1], "--multiband-endpoints") == 0)
     {
         n2_endpoint_tests::test();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--mix-wet-endpoint") == 0)
+    {
+        n2_mix_endpoint_tests::test();
         std::printf ("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -14944,6 +14953,7 @@ int main (int argc, char* argv[])
     testCrossfadedControlsDuringOrdinaryDuck();
 
     n2_endpoint_tests::test();
+    n2_mix_endpoint_tests::test();
     testBypassExactEndpoints();
     testBypassFiniteEndpointOverflow();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)

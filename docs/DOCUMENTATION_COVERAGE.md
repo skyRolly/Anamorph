@@ -3290,7 +3290,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2275-2327` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2285-2337` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -19440,3 +19440,39 @@ not a proof of unreachability. Original evidence and Test 25 remain intact.
 
 The H4 decision packet now points to the later policy checkpoint, and the dated
 November 13 delivery ledger explicitly labels its PR-state table historical.
+
+## N2-06 finite Mix endpoint documentation audit — 2026-11-16
+
+Before editing live descriptions, the drift check found line anchors shifted by
+the proposed Mix-stage code; their symbol targets were re-derived and updated.
+The proposed focused engine regression is described in TESTING; the existing
+Multiband Enable output oracle now models exact Mix=1 Wet selection. The DSP
+algorithm and graph descriptions, ADR-0005 implementation note, current issue
+status and Unreleased changelog describe the same scoped endpoint behavior.
+Interior arithmetic, invalid-operand self-heal, H4 behavior and Test 25 remain
+separate. Historical audit files and measurements are unchanged.
+An initial hosted MSVC build exposed an undeduced friend-return test-helper
+error; the regression now uses the existing explicitly typed access pattern.
+The failed attempt remains recorded separately from new-head validation.
+
+## N2-06 Unreleased evidence — 2026-11-17
+
+The pre-edit audit found the Mix endpoint entry cited tests but omitted an
+implementing Evidence Source and verification marker. Added PR #244 and the
+existing automated verification status; no user-visible scope changed.
+
+## N2-06 wrapped endpoint review — 2026-11-17
+
+The existing wrapped lane checked execution, clock and finiteness but did not
+independently compare the terminal production Mix output. Added an actual x4
+one-band wet-twin comparison and a legacy-expression sensitivity premise;
+TESTING records the selected scope.
+
+
+## N2-06 hosted warning-gate correction — 2026-11-17
+
+Exact head `e7824d8c` exposed a new `-Wshadow` site in the added wrapped test
+under both Clang and GCC LTO. Renamed the test-local input variable without
+changing the oracle or warning baselines. TESTING records the portability and
+warning-gate context; the failed hosted attempt remains separate from new-head
+validation.
