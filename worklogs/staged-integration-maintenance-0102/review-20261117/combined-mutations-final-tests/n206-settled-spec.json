@@ -42,10 +42,10 @@
       "args": [
         "n203"
       ],
-      "expected_exit": 0,
+      "expected_exit": 1,
       "stdout_contains": [
-        "selector=n203",
-        "0 failures"
+        "FAIL N2-03 engine: actual output matches the independently reconstructed boundary plus downstream rounding",
+        "selector=n203 392 checks, 24 failures"
       ]
     },
     {

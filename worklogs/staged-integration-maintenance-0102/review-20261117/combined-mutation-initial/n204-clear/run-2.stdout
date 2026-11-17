@@ -1,0 +1,10 @@
+N2-06: exact finite Mix=1 wet endpoint
+  x4 amplitude=0.125 legacy-differences=0
+  x4 amplitude=0.7 legacy-differences=0
+  x4 amplitude=12.345 legacy-differences=114
+  x4 amplitude=1234.57 legacy-differences=114
+  x4 amplitude=123457 legacy-differences=114
+  x4 amplitude=1e+06 legacy-differences=114
+  x4 terminal samples=684 mismatches=0 legacy-differences=456 latency=6
+  endpoint/interior/ramp/clock mismatches 0/0/0/0; discriminating legacy samples 1748
+selector=n206 16 checks, 0 failures
