@@ -285,3 +285,5 @@ Developer evidence: [0.10.2 numerical and interaction audit](worklogs/dsp-numeri
 0.10.2 DSP correction evidence: [ordinary crossfade ownership](worklogs/ORDINARY_DSP_CORRECTIONS_0.10.2.md).
 
 0.10.2 Multiband endpoint evidence: [N2-03 correction and independent controls](worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
+0.10.2 Mix-zero investigation: [Proposed ADR-0075](docs/architecture/design-decisions/ADR-0075-mix-zero-recovery-ownership.md) separates endpoint selection from recovery ownership; it approves no production change.
