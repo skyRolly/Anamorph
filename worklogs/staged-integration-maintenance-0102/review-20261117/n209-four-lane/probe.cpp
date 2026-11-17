@@ -16,11 +16,13 @@ extern int n209DiagnosticLane, n209DiagnosticMode, n209DiagnosticMask;
 using E=anamorph::AnamorphEngine;
 namespace n209_access {
 struct OS { friend auto member(OS); };
+struct Running { friend auto member(Running); };
 struct Write { friend auto member(Write); };
 struct Align { friend auto member(Align); };
 struct Reference { friend auto member(Reference); };
 template<class T,auto P> struct Get { friend auto member(T) { return P; } };
 template struct Get<OS,&E::osRunning>;
+template struct Get<Running,&E::mbRunning>;
 template struct Get<Write,&E::dryDelayWrite>;
 template struct Get<Align,&E::dryAlignDelayBuffer>;
 template struct Get<Reference,&E::loudnessRefScratch>;
@@ -98,11 +100,15 @@ int main(int argc,char** argv){
   anamorph::EngineParameters p;p.mbEnable=true;p.mbBands=2;p.mix=.4f;
   auto e=std::make_unique<E>();e->primeParameters(p);e->prepare(48000,128);
   juce::AudioBuffer<float> a(2,128);for(int k=0;k<4;++k){a.clear();e->process(a);}
+  const bool wasRunning=e.get()->*member(Running{});
   p.mbEnable=false;e->setParameters(p);anamorph::n209DiagnosticLane=lane;
   anamorph::n209DiagnosticMode=2;anamorph::n209DiagnosticHook=observe;a.clear();e->process(a);
   anamorph::n209DiagnosticHook=nullptr;
   invalidObserved+=stats.invalid;
   check(stats.invalid>0&&stats.invalidChanged==0,"non-finite operands retain original invalid classification");
+  bool finiteOutput=true;for(int c=0;c<2;++c)for(int i=0;i<128;++i)finiteOutput &= std::isfinite(a.getSample(c,i));
+  check(wasRunning && !(e.get()->*member(Running{})) && finiteOutput,
+        "invalid operand reaches existing final recovery and finite output");
  }
  // Observe terminal endpoints in real disable and enable ramps without injection.
  stats=Stats{};anamorph::n209DiagnosticLane=-1;anamorph::n209DiagnosticMode=0;anamorph::n209DiagnosticMask=15;
