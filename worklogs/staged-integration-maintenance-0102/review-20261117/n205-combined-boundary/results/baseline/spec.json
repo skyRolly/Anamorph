@@ -1,0 +1,71 @@
+{
+  "purpose": "N2-05 baseline on the combined production engine, with deliberately injected Wet state and independent N2-04 correction; main230 objects are used under the accepted receipt.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "b96797f20112c8694d4648354ea3ba8f283eac4e",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/baseline.patch",
+    "sha256": "1aa3df326f6a5828cca9fc0714838ca36c444094ddae7d8bf026a5f8f075474a",
+    "purpose": "Apply combined production engine and isolate the baseline N2-05 comparison."
+  },
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [
+        "off",
+        "observe"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "verdict=pass"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "off",
+        "contract"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "injected=1",
+        "FAIL N2-05 selected recovery contract"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "x4",
+        "observe"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "verdict=pass"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "x4",
+        "contract"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "injected=1",
+        "FAIL N2-05 selected recovery contract"
+      ]
+    }
+  ]
+}

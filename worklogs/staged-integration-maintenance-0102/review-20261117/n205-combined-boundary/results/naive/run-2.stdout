@@ -1,0 +1,2 @@
+injected=1 first_dry=128 first_zero=0 wet_bad_after_fault=1 wet_bad_next=1 next_dry=128 reentry_zeros=128 clean_zeros=0 mix_advancing=1 wet_bad_after_reentry=0 wrapped=1 latency=6
+verdict=pass

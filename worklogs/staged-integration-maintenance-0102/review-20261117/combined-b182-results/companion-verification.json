@@ -1,0 +1,72 @@
+{
+  "result": "pass",
+  "scope": "recorded seven run exits, hashes and declared stdout markers; enclosing session exit not observed",
+  "runs": [
+    {
+      "index": 0,
+      "exit": 0,
+      "stdout_sha256": "35af44bd100b13f537747b5bda35d617fc9fc973f4a054198c06e3d10cd7d3e2",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "125 checks, 0 failures"
+      ]
+    },
+    {
+      "index": 1,
+      "exit": 0,
+      "stdout_sha256": "97e8ecd2ccfd3ec60b47b5dfc5ddc38746be43b9a5720a4af4c2a6669161da8f",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "16 checks, 0 failures"
+      ]
+    },
+    {
+      "index": 2,
+      "exit": 0,
+      "stdout_sha256": "5dc762e37536c4a80201085e3bef7dce9e0fee76019ea88745190c112503783d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "20 checks, 0 failures"
+      ]
+    },
+    {
+      "index": 3,
+      "exit": 0,
+      "stdout_sha256": "c8fa71042db635650b6cd923d4c3eefac94331f10697dcb97cbdba78a4cd1eb6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "Match0 legacy wet endpoint visible/masked",
+        "Match1 legacy wet endpoint visible/masked",
+        "392 checks, 0 failures"
+      ]
+    },
+    {
+      "index": 4,
+      "exit": 0,
+      "stdout_sha256": "b53960cea0b8e26165cd50a3686a18c356d94a739906786d5bb59783b0bf8136",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "720 checks, 0 failures"
+      ]
+    },
+    {
+      "index": 5,
+      "exit": 0,
+      "stdout_sha256": "d8cc4643176af91dd9994bb76e276e8b4f1ce80c0d94156719489dd03a8164d4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "0 failures",
+        "ALL TESTS PASSED"
+      ]
+    },
+    {
+      "index": 6,
+      "exit": 0,
+      "stdout_sha256": "e165b2ea8de58999a728ec1e465fb6f366c6e45d78701e71bc3b0fdcc6e14dc5",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "markers": [
+        "16555 checks, 0 failure(s)"
+      ]
+    }
+  ]
+}

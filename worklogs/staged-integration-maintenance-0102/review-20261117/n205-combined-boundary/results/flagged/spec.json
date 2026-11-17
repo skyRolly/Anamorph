@@ -1,0 +1,71 @@
+{
+  "purpose": "N2-05 flagged on the combined production engine, with deliberately injected Wet state and independent N2-04 correction; main230 objects are used under the accepted receipt.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "f69c9fe0fcc61fa9c32dd6139aed6eb56e82da82",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/flagged.patch",
+    "sha256": "d95bf4a68662c25f9dfd854a72f498926496aa015619a42c0de6c155cb652b5c",
+    "purpose": "Apply combined production engine and isolate the flagged N2-05 comparison."
+  },
+  "probes": [
+    {
+      "name": "n205-boundary",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n205-combined-boundary/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n205-boundary",
+      "args": [
+        "off",
+        "observe"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "verdict=pass"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "off",
+        "contract"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "verdict=pass"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "x4",
+        "observe"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "mix_advancing=1",
+        "verdict=pass"
+      ]
+    },
+    {
+      "program": "n205-boundary",
+      "args": [
+        "x4",
+        "contract"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "injected=1",
+        "verdict=pass"
+      ]
+    }
+  ]
+}
