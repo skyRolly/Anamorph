@@ -1,0 +1,16 @@
+FAIL left settled Drive endpoint retains saturated output
+extreme ch=0 input=0x1.7d784p+26 output=0x0p+0 independent_reference=1.03767666
+FAIL right settled Drive endpoint retains saturated output
+extreme ch=1 input=0x1.7d784p+26 output=0x0p+0 independent_reference=1.03767666
+FAIL left settled Drive endpoint retains saturated output
+extreme ch=0 input=-0x1.7d784p+26 output=0x0p+0 independent_reference=-1.03767666
+FAIL right settled Drive endpoint retains saturated output
+extreme ch=1 input=-0x1.7d784p+26 output=0x0p+0 independent_reference=-1.03767666
+FAIL ramp reaches a discriminating endpoint within a block on both channels
+FAIL left x4 wrapped Drive retains saturated endpoint
+FAIL right x4 wrapped Drive retains saturated endpoint
+FAIL left held-envelope contribution retains finite saturation
+FAIL right held-envelope contribution retains finite saturation
+held_path=1 held_output=0x0p+0,0x0p+0 terminal_inside=1 terminal_discriminating=0,0 terminal_bad=0,0
+wrapped output=0x0p+0,0x0p+0 latency=6 clock_bad=0
+20 checks, 9 failures

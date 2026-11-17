@@ -1,0 +1,8 @@
+extreme ch=0 input=0x1.7d784p+26 output=0x1.09a52ep+0 independent_reference=1.03767666
+extreme ch=1 input=0x1.7d784p+26 output=0x1.09a52ep+0 independent_reference=1.03767666
+extreme ch=0 input=-0x1.7d784p+26 output=-0x1.09a52ep+0 independent_reference=-1.03767666
+extreme ch=1 input=-0x1.7d784p+26 output=-0x1.09a52ep+0 independent_reference=-1.03767666
+FAIL right held-envelope contribution retains finite saturation
+held_path=1 held_output=0x1.090bfep+0,0x1.40658cp-23 terminal_inside=1 terminal_discriminating=577,577 terminal_bad=0,0
+wrapped output=0x1.09a528p+0,0x1.09a528p+0 latency=6 clock_bad=0
+20 checks, 1 failures

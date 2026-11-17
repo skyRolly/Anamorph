@@ -1,0 +1,33 @@
+{
+  "purpose": "R-245-02 right-channel actual-engine control: candidate; held fade is intentionally injected.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "51e6aa86679c9368433fdb172915bfa788a8de90",
+  "probes": [
+    {
+      "name": "drive-control",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/drive-harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/right-controls/n2_drive_endpoint_tests.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "drive-control",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "20 checks, 0 failures",
+        "held_path=1"
+      ]
+    }
+  ],
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/numerical-main230/n207-finite-endpoint.patch",
+    "sha256": "5f301ec52011b217ae0ab42e4a8412dd6313d6d03b4b7300d64574e23490342d",
+    "purpose": "N2-07 candidate engine-only candidate or targeted mutation."
+  }
+}
