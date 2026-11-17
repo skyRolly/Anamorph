@@ -1,0 +1,16 @@
+{
+  "purpose": "Fresh combined N2-04, N2-06 and N2-07 production-source validation with existing N2-02 and N2-03 focused coverage and full DSP and State suites.",
+  "source_head": "0ea2299b4f9f0ea66fffefbe27e317aad89af7de",
+  "source_tree": "a221f6113d42ed467c4df66f482e0953b44520ae",
+  "targets": ["AnamorphTests", "AnamorphStateTests"],
+  "probes": [],
+  "runs": [
+    {"program":"AnamorphTests","args":["--n204-conditioned-history"],"expected_exit":0,"stdout_contains":["125 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--mix-wet-endpoint"],"expected_exit":0,"stdout_contains":["16 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--drive-endpoint"],"expected_exit":0,"stdout_contains":["20 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--multiband-endpoints"],"expected_exit":0,"stdout_contains":["Match0 legacy wet endpoint visible/masked","Match1 legacy wet endpoint visible/masked","392 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":["--n2-controls"],"expected_exit":0,"stdout_contains":["720 checks, 0 failures"]},
+    {"program":"AnamorphTests","args":[],"expected_exit":0,"stdout_contains":["0 failures","ALL TESTS PASSED"]},
+    {"program":"AnamorphStateTests","prefix":["xvfb-run","-a"],"args":[],"expected_exit":0,"stdout_contains":["16555 checks, 0 failure(s)"]}
+  ]
+}
