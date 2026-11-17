@@ -30,7 +30,7 @@ template struct Get<Reference,&E::loudnessRefScratch>;
 static bool bits(float a,float b){return std::memcmp(&a,&b,sizeof a)==0;}
 struct Stats {
  int injected=0,oldOverflow=0,repaired=0,wrongRepair=0,ordinaryMismatch=0;
- int invalid=0,invalidChanged=0,zero=0,one=0,endpointBad=0;
+ int invalid=0,invalidChanged=0,zero=0,one=0,endpointBad=0,referenceChecked=0,referenceBad=0;
  bool blockInjected=false;float blockResult=0;
 } stats;
 static void observe(int lane,int i,float from,float to,float b,float old,float result) noexcept {
@@ -41,6 +41,13 @@ static void observe(int lane,int i,float from,float to,float b,float old,float r
   if(!std::isfinite(old))++stats.oldOverflow;
   const float expected=(float)((double)from+(double)b*((double)to-(double)from));
   if(std::isfinite(result)&&bits(result,expected))++stats.repaired;else ++stats.wrongRepair;
+  // Independent convex-form oracle; tolerate two float ULPs for differing
+  // evaluation order rather than mirroring the diagnostic affine expression.
+  ++stats.referenceChecked;
+  const long double ideal=(1.0L-(long double)b)*(long double)from+(long double)b*(long double)to;
+  const float next=std::nextafter(result,std::numeric_limits<float>::infinity());
+  const long double ulp=std::abs((long double)next-(long double)result);
+  if(!std::isfinite(result)||!std::isfinite(next)||std::abs((long double)result-ideal)>2.0L*ulp)++stats.referenceBad;
  } else if(selected && n209DiagnosticMode==2) {
   ++stats.invalid;
   if(std::isfinite(old)||std::isfinite(result)||(std::isnan(old)!=std::isnan(result)))++stats.invalidChanged;
@@ -87,7 +94,8 @@ int main(int argc,char** argv){
   }
   anamorph::n209DiagnosticHook=nullptr;
   check(stats.injected>0 && stats.oldOverflow==stats.injected,"actual selected call site receives finite overflowing operands");
-  check(stats.repaired==stats.injected && stats.wrongRepair==0,"candidate repairs selected finite interior call site");
+  check(stats.repaired==stats.injected && stats.wrongRepair==0 && stats.referenceChecked==stats.injected && stats.referenceBad==0,
+        "candidate repairs selected finite interior call site");
   check(stats.ordinaryMismatch==0 && stats.endpointBad==0,"ordinary finite results and observed endpoints unchanged");
   forced+=stats.injected;
   if(lane>=2 && skip!=lane)check(laneHistory==stats.injected&&laneRef==stats.injected,"finite aligned history and latency-offset reference observed");
