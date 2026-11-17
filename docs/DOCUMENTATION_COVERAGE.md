@@ -1686,7 +1686,7 @@ Correlation 3.4 % vs 3.8 %. Two independent harnesses two rounds apart agreeing 
 
 **Two prices quoted for the first time, both maintainer decisions and neither reopened here.** A
 host-bypassed instance costs **101 % of an active one** (85.1M vs 84.0M Ir/s) because the Issue-2
-contract at `src/dsp/AnamorphEngine.cpp:1607-1613` keeps Measure + Predict running while bypassed, and
+contract at `src/dsp/AnamorphEngine.cpp:1616-1622` keeps Measure + Predict running while bypassed, and
 `loudness.process()` is handed the *processed* signal (`:1137`). And **59.3 % of the transparent idle
 floor is metering and loudness analysis**, running with Level Match off and with no editor in
 existence. W3-7 and W3-8 rejected gating those for reasons that still hold; what was missing was the
@@ -3183,7 +3183,7 @@ No other approval is claimed by this entry.
 (`src/dsp/AnamorphEngine.cpp:237-245`) — so by the time the counters were armed the switch was over,
 `switchState` was `Normal`, and the `setParameters (p)` inside the armed region hit the steady-state
 no-change gate every time. The whole structural half of a switch lives in the adopt block
-(`src/dsp/AnamorphEngine.cpp:1431-1572`: algorithm tails cleared, the three oversamplers and the
+(`src/dsp/AnamorphEngine.cpp:1440-1581`: algorithm tails cleared, the three oversamplers and the
 chorus reset on an oversampling-path change, the crossover cleared on a topology change) and it runs
 inside `process()`, at the silent bottom of the duck. So 3,840 armed calls proved the audio path
 allocation-free while nothing was changing, and `REALTIME_SAFETY_AUDIT.md` presented that gate as
@@ -3290,7 +3290,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2275-2327` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2284-2336` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs.
@@ -19440,3 +19440,25 @@ not a proof of unreachability. Original evidence and Test 25 remain intact.
 
 The H4 decision packet now points to the later policy checkpoint, and the dated
 November 13 delivery ledger explicitly labels its PR-state table historical.
+
+## N2-07 Drive endpoint documentation audit — 2026-11-16
+
+Before editing, the current Drive source, graph, accepted ADR, testing and
+coverage inventory were checked: the historical float blend can cancel its
+finite saturation result at blend 1, while the live algorithm reference did
+not describe that boundary. Inserting the focused correction also moved nine
+existing declared citation targets and eight signal-flow citations; their source
+lines and declarations were re-aimed together. A subsequent 39 source-line
+citations were incrementally re-anchored by the citation checker. Its self-test
+then exposed four additional declarations whose targets had moved; those were
+re-aimed to the same active dry-bank span as the document. DSP_ALGORITHMS, the graph, ADR-0003, TESTING, KNOWN_ISSUES
+and Unreleased now describe the finite endpoint and its independent regression.
+The documentation does not claim an audible impact or native-host acceptance.
+
+## N2-07 channel and Unreleased evidence audit — 2026-11-17
+
+The pre-edit review found the actual-engine Drive endpoint regression observed
+settled, terminal, wrapped and held results primarily on the left; separate
+right-channel observations now cover those boundaries. TESTING describes the
+injected held-fade premise. The Unreleased entry now cites PR #245 and its
+automated verification status, as required by CHANGELOG_POLICY rule 2.

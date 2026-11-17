@@ -14,6 +14,16 @@ Power-preserving MS matrix, `k = 1/√2 ≈ 0.70710678` in both directions.
 Invariant: encode→decode is gain/phase exact; mono compatibility by construction
 (`L+R = 2·Mid`, independent of side gain). width 1 = identity, 0 = mono, >1 = wide.
 
+## Drive — `src/dsp/AnamorphEngine.cpp`
+
+The peak-preserving tanh shaper blends from the input over the first 2 dB of
+Drive. At exact blend 1, finite input and saturation select the saturation
+bits directly; all other blend values and invalid operands retain the previous
+float expression. This avoids endpoint cancellation while preserving the
+existing non-finite self-heal. Gain and blend clocks, Drive placement and
+oversampling scope are unchanged. See the N2-07 implementation note in
+ADR-0003 and the actual-engine Drive endpoint regression.
+
 ## HaasProcessor — `src/dsp/HaasProcessor.{h,cpp}`
 
 Precedence (Haas) widening: a single fractional delay line per channel (power-of-two circular

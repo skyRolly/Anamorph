@@ -86,7 +86,7 @@ value-box text).
   guard never saw it, and it does not reset `matchGainSmooth`. A burst (a NaN in every 97th sample
   for 1 s) therefore ramped the applied gain to silence with Level Match on — 164–165 of 187 blocks
   exact zeros against 0–2 with it off. A NaN reading now keeps the current target
-  (`src/dsp/AnamorphEngine.cpp:2139-2140`); every finite reading is unchanged. Test 65. The gain the
+  (`src/dsp/AnamorphEngine.cpp:2148-2149`); every finite reading is unchanged. Test 65. The gain the
   full `loudness.reset()` discards after the burst is the owner question below, not changed.
 
 **Recorded, not changed:**
@@ -108,11 +108,11 @@ value-box text).
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
-- `src/dsp/AnamorphEngine.cpp:2275-2327` (NaN/Inf self-heal)
+- `src/dsp/AnamorphEngine.cpp:2284-2336` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:98-102, 167` (`sanitize`)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2275-2327; src/dsp/LevelMeters.h
+- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2284-2336; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123),
   testNonFiniteGlideTargetsDoNotLatch (Test 64), testNonFiniteBurstKeepsLevelMatchAudible (Test 65),

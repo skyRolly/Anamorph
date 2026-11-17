@@ -45,3 +45,14 @@ Evidence [Verified]:
 - Source: src/dsp/AnamorphEngine.cpp:29-40, 79-93, 905-948
 - Test: tests/dsp_tests.cpp :: testBypassNullAndLatency
 - History [Partially Verified]: docs/architecture/LATENCY_MODEL.md
+
+## N2-07 implementation note — Drive blend endpoint
+
+The old `input + blend * (saturated - input)` can erase a finite saturation
+result at exact blend 1. The Drive stage selects finite saturation directly
+at that endpoint; invalid operands and all other coefficients retain the
+old arithmetic so existing recovery and transitions continue to operate.
+The settled, smoothing and oversampled held-envelope paths use the same rule.
+No stage moves, and the oversampling engagement, filters, clock and latency
+decisions above are unchanged. The actual-engine regression also distinguishes
+the three call sites and preserves their separate clock obligations.
