@@ -7898,4 +7898,6 @@ legacy-expression sensitivity premise. The existing
 checking actual Match-on and Match-off Enable output. It does not independently
 verify the complete Level-Match algorithm. Existing Test 25 is unchanged.
 The test's private-state access uses explicitly typed friend declarations so
-the same regression compiles under MSVC as well as GCC and Clang.
+the same regression compiles under MSVC as well as GCC and Clang. The wrapped
+comparison uses distinct local names so the GCC and Clang warning gates remain
+active without a baseline exception.
