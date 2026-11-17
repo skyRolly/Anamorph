@@ -1,0 +1,73 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..ec47a37a 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -7,0 +8,4 @@ namespace anamorph
++// Nonshipping trace hook and exceptional-only comparison control.
++using H4DiagnosticTrace = void (*) (int, int, int, int, int, int, float, float, float, float) noexcept;
++H4DiagnosticTrace h4DiagnosticTrace = nullptr;
++bool h4DiagnosticWiden = false;
+@@ -2004,0 +2009 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++                const float h4BeforeL = aLw[i], h4BeforeR = aRw[i];
+@@ -2006,0 +2012,14 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++                if (h4DiagnosticTrace)
++                {
++                    h4DiagnosticTrace (1, 0, i, 0, 0, lat, cdL[i], h4BeforeL, b, aLw[i]);
++                    h4DiagnosticTrace (1, 1, i, 0, 0, lat, cdR[i], h4BeforeR, b, aRw[i]);
++                }
++                // Diagnostic comparison only: preserve the original arithmetic
++                // unless it overflowed with finite endpoints and an interior blend.
++                if (h4DiagnosticWiden && b > 0.0f && b < 1.0f)
++                {
++                    if (! std::isfinite (aLw[i]) && std::isfinite (cdL[i]) && std::isfinite (h4BeforeL))
++                        aLw[i] = (float) ((double) cdL[i] + (double) b * ((double) h4BeforeL - (double) cdL[i]));
++                    if (! std::isfinite (aRw[i]) && std::isfinite (cdR[i]) && std::isfinite (h4BeforeR))
++                        aRw[i] = (float) ((double) cdR[i] + (double) b * ((double) h4BeforeR - (double) cdR[i]));
++                }
+@@ -2056,0 +2076,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++            if (h4DiagnosticTrace)
++            {
++                h4DiagnosticTrace (2, 0, i, dryDelayWrite, rp, lat, aL[i], adL[dryDelayWrite], adL[rp], L[i]);
++                h4DiagnosticTrace (2, 1, i, dryDelayWrite, rp, lat, aR[i], adR[dryDelayWrite], adR[rp], R[i]);
++                h4DiagnosticTrace (6, 0, i, dryDelayWrite, rp, lat, ddL[rp], adL[rp], 0, 0);
++                h4DiagnosticTrace (6, 1, i, dryDelayWrite, rp, lat, ddR[rp], adR[rp], 0, 0);
++            }
+@@ -2081,0 +2108,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++            if (h4DiagnosticTrace)
++            {
++                h4DiagnosticTrace (2, 0, i, dryDelayWrite, rp, lat, aL[i], adL[dryDelayWrite], adL[rp], L[i]);
++                h4DiagnosticTrace (2, 1, i, dryDelayWrite, rp, lat, aR[i], adR[dryDelayWrite], adR[rp], R[i]);
++                h4DiagnosticTrace (6, 0, i, dryDelayWrite, rp, lat, ddL[rp], adL[rp], 0, 0);
++                h4DiagnosticTrace (6, 1, i, dryDelayWrite, rp, lat, ddR[rp], adR[rp], 0, 0);
++            }
+@@ -2093,0 +2127 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++            const float h4WetL = L[i], h4WetR = R[i];
+@@ -2095,0 +2130,5 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++            if (h4DiagnosticTrace)
++            {
++                h4DiagnosticTrace (3, 0, i, 0, 0, lat, dryL, h4WetL, m, L[i]);
++                h4DiagnosticTrace (3, 1, i, 0, 0, lat, dryR, h4WetR, m, R[i]);
++            }
+@@ -2105,0 +2145,7 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++        if (h4DiagnosticTrace)
++        {
++            h4DiagnosticTrace (2, 0, i, dryDelayWrite, rp, lat, aL[i], adL[dryDelayWrite], adL[rp], L[i]);
++            h4DiagnosticTrace (2, 1, i, dryDelayWrite, rp, lat, aR[i], adR[dryDelayWrite], adR[rp], R[i]);
++            h4DiagnosticTrace (6, 0, i, dryDelayWrite, rp, lat, ddL[rp], adL[rp], 0, 0);
++            h4DiagnosticTrace (6, 1, i, dryDelayWrite, rp, lat, ddR[rp], adR[rp], 0, 0);
++        }
+@@ -2130,0 +2177 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++        const float h4WetL = L[i], h4WetR = R[i];
+@@ -2132,0 +2180,5 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++        if (h4DiagnosticTrace)
++        {
++            h4DiagnosticTrace (3, 0, i, 0, 0, lat, dryL, h4WetL, m, L[i]);
++            h4DiagnosticTrace (3, 1, i, 0, 0, lat, dryR, h4WetR, m, R[i]);
++        }
+@@ -2324,2 +2376,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-                if (! std::isfinite (L[i])) { L[i] = 0.0f; nonFinite = true; }
+-                if (! std::isfinite (R[i])) { R[i] = 0.0f; nonFinite = true; }
++                if (! std::isfinite (L[i])) { if (h4DiagnosticTrace) h4DiagnosticTrace (4, 0, i, 0, 0, lat, L[i], 0, 0, 0); L[i] = 0.0f; nonFinite = true; }
++                if (! std::isfinite (R[i])) { if (h4DiagnosticTrace) h4DiagnosticTrace (4, 1, i, 0, 0, lat, R[i], 0, 0, 0); R[i] = 0.0f; nonFinite = true; }
+@@ -2329,0 +2382 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++        if (h4DiagnosticTrace) h4DiagnosticTrace (5, 0, 0, 0, 0, lat, 0, 0, 0, 0);

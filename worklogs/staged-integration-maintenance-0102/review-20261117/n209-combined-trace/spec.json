@@ -1,0 +1,32 @@
+{
+  "purpose": "Diagnostic trace of the previously observed finite interior Enable overflow on the combined N2-04/N2-06/N2-07 rehearsal; disabled-by-default dry-only widening is a counterfactual comparison, not a production fix.",
+  "source_head": "0ea2299b4f9f0ea66fffefbe27e317aad89af7de",
+  "source_tree": "6162e00c4b2dd79000410e063861404b3d4fff7d",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-combined-trace/trace.patch",
+    "sha256": "cda47566adc38fe099c149a75d1788c59f26f6ec843024b66c3754058c9a5d29",
+    "purpose": "Instrument the actual dry Enable blend, aligned history, Mix and final self-heal, with an opt-in dry-only widening control while retaining all combined production corrections."
+  },
+  "probes": [
+    {
+      "name": "n209-combined-trace",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-combined-trace/trace-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n209-combined-trace",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off widen=0",
+        "case=x4 widen=0",
+        "case=x4 widen=1",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
