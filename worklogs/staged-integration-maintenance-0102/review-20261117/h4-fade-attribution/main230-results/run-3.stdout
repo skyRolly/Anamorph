@@ -1,0 +1,5 @@
+scenario=0 fade=1 weight=0x1.c71c72p-9 bank_a=-0x1.640e86p+127 bank_b=0x1.43f93p+127 out=inf bank_a_finite=1 bank_b_finite=1
+scenario=1 fade=1 weight=0x1.c71c72p-9 bank_a=-0x1.640e86p+127 bank_b=-0x1.43f93p+127 out=-0x1.63f202p+127 bank_a_finite=1 bank_b_finite=1
+FAIL negative claim that valid destination bank is invalid
+scenario=2 fade=1 weight=0x1.c71c72p-9 bank_a=nan bank_b=0x1.43f93p+127 out=nan bank_a_finite=0 bank_b_finite=1
+24 checks, 1 failures

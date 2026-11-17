@@ -93,13 +93,14 @@ remain narrower than a complete recovery policy. ADR-0074 remains Proposed.
 Source review of the actual Multiband fade shows `runDry` computes each live
 bank separately, then `da + w*(db-da)` combines their results. A non-finite
 combined output alone cannot identify whether a bank result was invalid or a
-finite pair overflowed in the combination. The new `h4-fade-attribution/`
-probe is designed to compare copied bank states and actual production
-`MultibandWidth::processBlock` under deliberately injected states. Its first
-compile failed because the test namespace collided with POSIX `access`; that
-attempt and fix are preserved. No result is claimed until its rerun completes.
-Even a successful direct-module injection would not establish engine-level
-natural reachability, a suitable fallback, or complete aligned-history policy.
+finite pair overflowed in the combination. The [direct-module attribution experiment](h4-fade-attribution/main230-results/README.md)
+compares copied bank states and actual production `MultibandWidth::processBlock`
+under deliberately injected states. It passed 23/23 checks and distinguished
+finite bank outputs whose fade arithmetic overflows from one injected invalid
+bank; three false-claim controls each failed 1/24. The initial compile failure
+and its namespace fix are preserved. These direct-module injections do not
+establish engine-level natural reachability, a suitable fallback, or a complete
+aligned-history policy.
 
 ## Changelog evidence and validation boundary
 

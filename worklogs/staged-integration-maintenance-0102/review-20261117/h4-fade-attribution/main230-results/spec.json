@@ -1,0 +1,56 @@
+{
+  "purpose": "Preliminary actual production MultibandWidth live-fade attribution probe on main 230da0e2; injected states are not a natural-reachability claim. Its MultibandWidth source bytes also match the combined rehearsal.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "a322ae4cab7c4656a3fd2beb465f3e62e31d8f9c",
+  "probes": [
+    {
+      "name": "h4-fade-attribution",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "h4-fade-attribution",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "scenario=0 fade=1",
+        "scenario=1 fade=1",
+        "scenario=2 fade=1",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-attribution"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that one bank output must be invalid"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-arithmetic"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that finite bank outputs guarantee finite fade"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-bank"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that valid destination bank is invalid"
+      ]
+    }
+  ]
+}
