@@ -155,6 +155,53 @@ static void test()
         for(int ch=0;ch<2;++ch)for(int i=0;i<64;++i)invalidOutput+=!std::isfinite(delayed.getSample(ch,i));
     }
     check(wrappedClockBad==0&&invalidOutput==0,"N2-06: wrapped Mix transition keeps its base-sample clock and finite output");
+    // A one-band H4 twin supplies an actual wrapped Wet output while the
+    // subject reaches Mix=1 inside a block, before its own H4 gate can engage.
+    int wrappedEndpointSamples=0,wrappedEndpointBad=0,wrappedLegacyDifferent=0,wrappedTerminalSamples=0;
+    bool wrappedPremise=true;int actualLatency=0;
+    for(float amplitude:{0.125f,0.7f,12.345f,1234.567f,123456.7f,1.0e6f})
+    {
+        anamorph::EngineParameters wp;wp.algorithm=anamorph::Algorithm::Haas;wp.algoAmount=0.0f;
+        wp.width=1.0f;wp.mix=.25f;wp.mbEnable=true;wp.mbBands=1;wp.autoGainMatch=false;
+        wp.driveDb=6.0f;wp.oversample=anamorph::OversampleFactor::x4;
+        auto subject=std::make_unique<Engine>(),wetReference=std::make_unique<Engine>();
+        subject->primeParameters(wp);auto referenceP=wp;referenceP.mix=1.0f;
+        wetReference->primeParameters(referenceP);subject->prepare(48000,127);wetReference->prepare(48000,127);
+        juce::AudioBuffer<float> actualWet(2,127),referenceWet(2,127);
+        for(int block=0;block<12;++block)
+        {
+            for(int i=0;i<127;++i){actualWet.setSample(0,i,amplitude);actualWet.setSample(1,i,-amplitude);
+                referenceWet.setSample(0,i,amplitude);referenceWet.setSample(1,i,-amplitude);}
+            subject->process(actualWet);wetReference->process(referenceWet);
+        }
+        actualLatency=subject->getLatencySamples();
+        wrappedPremise=wrappedPremise&&(subject.get()->*member(OS{}))&&(wetReference.get()->*member(OS{}))
+                         &&actualLatency>0&&wetReference->getLatencySamples()==actualLatency;
+        wp.mix=1.0f;subject->setParameters(wp);auto endpointClock=subject.get()->*member(Mix{});
+        int caseLegacy=0;
+        for(int block=0;block<12;++block)
+        {
+            const bool wasSmoothing=endpointClock.isSmoothing();bool endpoint[127];
+            for(int i=0;i<127;++i){endpoint[i]=juce::exactlyEqual(endpointClock.getNextValue(),1.0f);
+                actualWet.setSample(0,i,amplitude);actualWet.setSample(1,i,-amplitude);
+                referenceWet.setSample(0,i,amplitude);referenceWet.setSample(1,i,-amplitude);}
+            subject->process(actualWet);wetReference->process(referenceWet);
+            if(wasSmoothing)for(int i=0;i<127;++i)if(endpoint[i])
+            {
+                ++wrappedTerminalSamples;
+                for(int ch=0;ch<2;++ch){const float dry=ch==0?amplitude:-amplitude,wet=referenceWet.getSample(ch,i);
+                    ++wrappedEndpointSamples;wrappedEndpointBad+=!bits(actualWet.getSample(ch,i),wet);
+                    caseLegacy+=!bits(dry+1.0f*(wet-dry),wet);}
+            }
+        }
+        wrappedLegacyDifferent+=caseLegacy;
+        std::printf("  x4 amplitude=%g legacy-differences=%d\n",double(amplitude),caseLegacy);
+    }
+    check(wrappedPremise,"N2-06 premise: subject and independent wet twin execute the actual x4 wrap");
+    check(wrappedTerminalSamples>0&&wrappedEndpointSamples>0&&wrappedLegacyDifferent>0&&wrappedEndpointBad==0,
+          "N2-06: wrapped terminal Mix selects the independently observed wet output");
+    std::printf("  x4 terminal samples=%d mismatches=%d legacy-differences=%d latency=%d\n",
+                wrappedEndpointSamples,wrappedEndpointBad,wrappedLegacyDifferent,actualLatency);
     std::printf("  endpoint/interior/ramp/clock mismatches %d/%d/%d/%d; discriminating legacy samples %d\n",
                 endpointBad,interiorBad,rampBad,clockBad,legacyDifferent);
 }

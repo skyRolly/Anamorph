@@ -19460,3 +19460,10 @@ The failed attempt remains recorded separately from new-head validation.
 The pre-edit audit found the Mix endpoint entry cited tests but omitted an
 implementing Evidence Source and verification marker. Added PR #244 and the
 existing automated verification status; no user-visible scope changed.
+
+## N2-06 wrapped endpoint review — 2026-11-17
+
+The existing wrapped lane checked execution, clock and finiteness but did not
+independently compare the terminal production Mix output. Added an actual x4
+one-band wet-twin comparison and a legacy-expression sensitivity premise;
+TESTING records the selected scope.
