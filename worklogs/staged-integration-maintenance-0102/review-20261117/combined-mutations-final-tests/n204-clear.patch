@@ -1,0 +1,11 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..8689b967 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2339,5 +2339 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-        for (int i = 0; i < ddSize; ++i)
+-        {
+-            if (! std::isfinite (ddL[i])) ddL[i] = 0.0f;
+-            if (! std::isfinite (ddR[i])) ddR[i] = 0.0f;
+-        }
++        dryDelayBuffer.clear();

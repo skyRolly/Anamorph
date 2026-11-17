@@ -1,0 +1,63 @@
+{
+  "purpose": "Isolated n207-held mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained. The probe packet uses final d5e test headers; the verified build baseline is b182 and has identical production src bytes.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "6489f9171eb734b7256f63e51fb7e1818f911db5",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n207-held.patch",
+    "sha256": "e72d51cb69442ae68934a823d50a52f4c5c48a1d99ca59da0a5dd76e279e28f3",
+    "purpose": "Restore or perturb only n207-held as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-final-tests/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n207"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n207"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n206"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n206",
+        "0 failures"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..9aecde34 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1305 +1305 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
+-            if (juce::exactlyEqual (blend, 1.0f) && std::isfinite (input) && std::isfinite (saturated))
++            if (juce::exactlyEqual (blend, 1.0f))
