@@ -19454,3 +19454,11 @@ then exposed four additional declarations whose targets had moved; those were
 re-aimed to the same active dry-bank span as the document. DSP_ALGORITHMS, the graph, ADR-0003, TESTING, KNOWN_ISSUES
 and Unreleased now describe the finite endpoint and its independent regression.
 The documentation does not claim an audible impact or native-host acceptance.
+
+## N2-07 channel and Unreleased evidence audit — 2026-11-17
+
+The pre-edit review found the actual-engine Drive endpoint regression observed
+settled, terminal, wrapped and held results primarily on the left; separate
+right-channel observations now cover those boundaries. TESTING describes the
+injected held-fade premise. The Unreleased entry now cites PR #245 and its
+automated verification status, as required by CHANGELOG_POLICY rule 2.

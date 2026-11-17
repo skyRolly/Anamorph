@@ -4,8 +4,9 @@
 
 `AnamorphTests --drive-endpoint` selects the same actual-engine regression as
 full DSP. A one-band full-wet case isolates Drive from Mix endpoint arithmetic;
-positive and negative extreme inputs are compared to an independent saturation
-reference. A settled twin, copied smoother clocks and discriminating in-block
+positive and negative extreme inputs on both channels are compared to an independent
+saturation reference. Right-channel terminal, wrapped and held-envelope observations
+independently exercise the separate production calls. A settled twin, copied smoother clocks and discriminating in-block
 terminal samples exercise the unwrapped ramp. A selected x4 wrap has nonzero
 latency, and a deliberately injected OS fade exercises the held-envelope path;
 that injection does not establish host reachability. Finite interior arithmetic,
