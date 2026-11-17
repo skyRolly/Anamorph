@@ -14794,9 +14794,13 @@ static void testBypassExactEndpoints()
 
 #include "n2_mix_endpoint_tests.h"
 
+#include "n2_drive_endpoint_tests.h"
+
 int main (int argc, char* argv[])
 {
     if (argc > 1 && std::strcmp(argv[1], "--n2-controls") == 0) { testCrossfadedControlsDuringOrdinaryDuck(); std::printf("%d checks, %d failures\n",checks,failures); return failures==0?0:1; }
+
+    if (argc > 1 && std::strcmp(argv[1], "--drive-endpoint") == 0) { n2_drive_endpoint_tests::test(); std::printf("%d checks, %d failures\n",checks,failures); return failures==0?0:1; }
 
     // A CRASH MUST NOT TAKE THE LOG WITH IT (D-2 round 13). Windows' CRT buffers
     // stdout fully when it is a pipe -- which every CI runner is -- so a suite that
@@ -14963,6 +14967,8 @@ int main (int argc, char* argv[])
 
     n2_endpoint_tests::test();
     n2_mix_endpoint_tests::test();
+
+    n2_drive_endpoint_tests::test();
     testBypassExactEndpoints();
     testBypassFiniteEndpointOverflow();
     testAbActiveClampOnCorruptState(); // state-restoration robustness (not a DSP test)

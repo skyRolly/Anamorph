@@ -1022,7 +1022,7 @@ void AnamorphEngine::adoptSnapshot (const EngineParameters& np, bool trusted) no
             //     block N    : change the band count   -> duck opens, flag = false
             //     block N+1  : change the algorithm    -> pendingP retargeted
             // -- reached the silent bottom, adopted the new algorithm with
-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1462) and skipped `haas/velvet/chorus.reset()`
+            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1471) and skipped `haas/velvet/chorus.reset()`
             // because the flag still described the FIRST change. The incoming
             // algorithm then started on the outgoing one's delay-line and LFO
             // state. Measured, 400 Hz through an 18 ms Haas line at 48 kHz:
@@ -1297,6 +1297,15 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
     // gliding back to zero, so disengaging Drive fades out instead of stepping.
     if (driveActive || driveBlendSmooth.isSmoothing())
     {
+        // At exact blend=1, retain finite saturation rather than subtracting
+        // and re-adding the input. Invalid operands keep the original path
+        // so the existing final-output self-heal can still observe them.
+        const auto driveSample = [] (float input, float saturated, float blend) noexcept
+        {
+            if (juce::exactlyEqual (blend, 1.0f) && std::isfinite (input) && std::isfinite (saturated))
+                return saturated;
+            return input + blend * (saturated - input);
+        };
         // Smoothed tanh drive with PEAK-preserving makeup (1/tanh(g)): a
         // full-scale input still maps to full scale, so driving harder adds
         // saturation/density without dropping the level (feedback #23). The blend
@@ -1317,7 +1326,7 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
                 for (int i = 0; i < n; ++i)
                 {
                     const float s = driveTanh (g * ch[i]) * c;
-                    ch[i] += blend * (s - ch[i]);
+                    ch[i] = driveSample (ch[i], s, blend);
                 }
         }
         else if (envStride <= 1)
@@ -1329,8 +1338,8 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
                 const float c = 1.0f / driveTanh (g);
                 const float sl = driveTanh (g * L[i]) * c;
                 const float sr2 = driveTanh (g * R[i]) * c;
-                L[i] += blend * (sl  - L[i]);
-                R[i] += blend * (sr2 - R[i]);
+                L[i] = driveSample (L[i], sl, blend);
+                R[i] = driveSample (R[i], sr2, blend);
             }
         }
         else
@@ -1358,8 +1367,8 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
                 --hold;
                 const float sl  = driveTanh (g * L[i]) * c;
                 const float sr2 = driveTanh (g * R[i]) * c;
-                L[i] += blend * (sl  - L[i]);
-                R[i] += blend * (sr2 - R[i]);
+                L[i] = driveSample (L[i], sl, blend);
+                R[i] = driveSample (R[i], sr2, blend);
             }
         }
     }

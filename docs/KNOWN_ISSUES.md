@@ -10,9 +10,11 @@ N2-01 (P2) and V2-01 remain open on the investigated main: H4 skips recursive dr
 crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
-The original audit's N2-05–07 remain confirmed P3 findings on the reviewed
-production source and are tracked independently for maintenance; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
-are retained. Open correction PRs do not establish integration on main.
+The original audit's N2-04 through N2-07 were confirmed P3 findings on the
+reviewed production source. This integration candidate includes the N2-04,
+N2-06 and N2-07 corrections; N2-05 remains open. The [original evidence and
+follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md) are retained.
+Open correction PRs do not establish integration on main.
 
 N2-04 (P3): this pending correction preserves finite conditioned dry history
 during the existing self-heal and sanitizes invalid ring slots. It remains open
@@ -20,7 +22,8 @@ on main until the separate change is reviewed and merged. [Controls and limits](
 
 The proposed N2-06 Mix endpoint correction on this branch is independently
 reviewable; the finding remains open on main until that correction is merged.
-It does not resolve N2-01, N2-04, N2-05, N2-07, N2-08 or N2-09.
+It does not resolve N2-01, N2-05, N2-08 or N2-09. The separate N2-04 and
+N2-07 corrections are also present in this integration candidate.
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
 crossover frequency, a finite wet LR4 state can overflow an intermediate
@@ -215,7 +218,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1451 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1460 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
