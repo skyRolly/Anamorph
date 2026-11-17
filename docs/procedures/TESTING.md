@@ -7919,7 +7919,9 @@ independently calculated Wet, historical interior arithmetic, a Mix ramp
 ending inside a block, the smoother clock and the extreme cancellation witness.
 Selected non-finite dry and Wet controls check that the existing final-output
 self-heal remains observable; a selected x4 stand-in and actual nonlinear x4
-wrap exercise the latency and smoother premises separately. The existing
+wrap exercise the latency and smoother premises separately. At the terminal
+x4 sample, a one-band H4 wet twin supplies an output comparison and a
+legacy-expression sensitivity premise. The existing
 `--multiband-endpoints` oracle models the corrected Mix=1 boundary while still
 checking actual Match-on and Match-off Enable output. It does not independently
 verify the complete Level-Match algorithm. Existing Test 25 is unchanged.

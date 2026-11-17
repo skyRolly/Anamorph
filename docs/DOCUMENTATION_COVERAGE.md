@@ -19517,3 +19517,10 @@ entry, re-derives the deliberate Mono Maker and Level-Match targets, and
 re-anchors the remaining citations against the combined source. The regression
 selectors and full-suite registrations are retained. The candidate and its
 validation do not establish that the separate PRs have merged on main.
+
+## N2-06 wrapped endpoint review — 2026-11-17
+
+The existing wrapped lane checked execution, clock and finiteness but did not
+independently compare the terminal production Mix output. Added an actual x4
+one-band wet-twin comparison and a legacy-expression sensitivity premise;
+TESTING records the selected scope.
