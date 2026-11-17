@@ -1,0 +1,35 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..0c880479 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -7,0 +8,6 @@ namespace anamorph
++// Nonshipping N2-09 path observation and finite-input overflow comparison.
++using N209DiagnosticHook = void (*) (int, int, float, float, float, float, float) noexcept;
++N209DiagnosticHook n209DiagnosticHook = nullptr;
++int n209DiagnosticLane = -1;
++int n209DiagnosticMode = 0;
++int n209DiagnosticMask = 0;
+@@ -2003,4 +2009,19 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-                L[i] = blendMultibandEnableSample (pmL[i], L[i], b);
+-                R[i] = blendMultibandEnableSample (pmR[i], R[i], b);
+-                aLw[i] = blendMultibandEnableSample (cdL[i], aLw[i], b);
+-                aRw[i] = blendMultibandEnableSample (cdR[i], aRw[i], b);
++                const auto observedBlend = [b, i] (int lane, float from, float to) noexcept
++                {
++                    if (i == 1 && lane == n209DiagnosticLane && b > 0.0f && b < 1.0f)
++                    {
++                        if (n209DiagnosticMode == 1) { from = -0x1.7ffffep+127f; to = 0x1.7ffffep+127f; }
++                        if (n209DiagnosticMode == 2) { from = std::numeric_limits<float>::infinity(); to = 0.0f; }
++                    }
++                    const float original = blendMultibandEnableSample (from, to, b);
++                    float result = original;
++                    if ((n209DiagnosticMask & (1 << lane)) != 0 && b > 0.0f && b < 1.0f
++                        && ! std::isfinite (original) && std::isfinite (from) && std::isfinite (to))
++                        result = (float) ((double) from + (double) b * ((double) to - (double) from));
++                    if (n209DiagnosticHook) n209DiagnosticHook (lane, i, from, to, b, original, result);
++                    return result;
++                };
++                L[i] = observedBlend (0, pmL[i], L[i]);
++                R[i] = observedBlend (1, pmR[i], R[i]);
++                aLw[i] = observedBlend (2, cdL[i], aLw[i]);
++                aRw[i] = observedBlend (3, cdR[i], aRw[i]);

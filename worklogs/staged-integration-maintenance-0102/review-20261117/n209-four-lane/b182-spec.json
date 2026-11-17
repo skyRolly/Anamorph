@@ -1,0 +1,73 @@
+{
+  "purpose": "Nonshipping four actual Enable call-site injection and exceptional-only widening comparison; main230-engine mode applies the b182 production engine before instrumentation.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "c9d39454f80007386f34773a4ae1524b07bb4dec",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-four-lane/b182.patch",
+    "sha256": "89b0c5c441871dafa038e52b11b27c3e2733529b4d815e9f2830ad2ec37c58d7",
+    "purpose": "Instrument the four actual Enable call sites, inject selected operands and optionally recalculate finite-operand interior overflow. No shipping code or accepted numerical contract is changed."
+  },
+  "probes": [
+    {
+      "name": "n209-four-lane",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-four-lane/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n209-four-lane",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "forced=",
+        "history=",
+        "reference=",
+        "invalid=",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "n209-four-lane",
+      "args": [
+        "skip-0"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL candidate repairs selected finite interior call site"
+      ]
+    },
+    {
+      "program": "n209-four-lane",
+      "args": [
+        "skip-1"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL candidate repairs selected finite interior call site"
+      ]
+    },
+    {
+      "program": "n209-four-lane",
+      "args": [
+        "skip-2"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL candidate repairs selected finite interior call site"
+      ]
+    },
+    {
+      "program": "n209-four-lane",
+      "args": [
+        "skip-3"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL candidate repairs selected finite interior call site"
+      ]
+    }
+  ]
+}
