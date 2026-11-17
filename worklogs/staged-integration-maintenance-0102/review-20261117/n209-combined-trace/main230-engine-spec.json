@@ -1,0 +1,32 @@
+{
+  "purpose": "Preliminary N2-09 actual-engine trace using the combined production engine on verified main230 objects; this is not an exact combined Git-head build.",
+  "source_head": "230da0e2b0b81422f7e3964eea2833c48266a963",
+  "source_tree": "36f53cadaf343eea46860aead4f5df87a53957e8",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-combined-trace/trace-main230-engine.patch",
+    "sha256": "83990423bb796763b15167129bf041c51eb9f6572d577890f9402d43994d447b",
+    "purpose": "Apply the b182 combined engine plus test-only Enable/history/Mix trace and an opt-in dry-only widening counterfactual."
+  },
+  "probes": [
+    {
+      "name": "n209-combined-trace",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/n209-combined-trace/trace-probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "n209-combined-trace",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "case=off widen=0",
+        "case=x4 widen=0",
+        "case=x4 widen=1",
+        "premise_failures=0"
+      ]
+    }
+  ]
+}
