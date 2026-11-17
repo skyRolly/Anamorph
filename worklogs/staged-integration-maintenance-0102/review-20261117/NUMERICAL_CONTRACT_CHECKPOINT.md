@@ -2,8 +2,11 @@
 
 This is an interim source review, not a statement that the three maintenance
 PRs have merged. At this checkpoint actual main is `230da0e2b0b81422f7e3964eea2833c48266a963`;
-the separate combined rehearsal is `0ea2299b4f9f0ea66fffefbe27e317aad89af7de`
-(tree `a221f6113d42ed467c4df66f482e0953b44520ae`) and its tests are running.
+the corrected combined rehearsal is `b182cc0a6d68b105a0226cfcffd9fe6cfe767003`
+(tree `d91c4b01c8fda95d11f09cdc4b6627d16a7a84b5`) and its tests are running.
+The earlier 0ea rehearsal missed the newest #244 test because of a stale local
+ref; the failed marker and superseded attempts are retained in
+[`stale-head-attempt/`](stale-head-attempt/README.md).
 Historical results keep their original source and environment identities.
 The owner's current integration and research authorization is recorded in
 [`../OWNER_DECISIONS_2026-11-17.md`](../OWNER_DECISIONS_2026-11-17.md).

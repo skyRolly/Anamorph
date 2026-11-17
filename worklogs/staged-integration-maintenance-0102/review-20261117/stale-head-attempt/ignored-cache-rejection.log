@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/workspace/anamorph-numerical-integration-20261117/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 205, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/workspace/anamorph-numerical-integration-20261117/worklogs/dsp-numerical-audit-0102/replay_experiment.py", line 76, in main
+    actual_tree = verify_source_tree(checkout, expected, patch_path, patch_digest)
+  File "/workspace/anamorph-numerical-integration-20261117/worklogs/dsp-numerical-audit-0102/replay_provenance.py", line 71, in verify_source_tree
+    raise ValueError(f'ignored input in {path}; keep builds and outputs outside the checkout')
+ValueError: ignored input in /workspace/anamorph-numerical-integration-20261117; keep builds and outputs outside the checkout

@@ -1,0 +1,3 @@
+N2-06: exact finite Mix=1 wet endpoint
+  endpoint/interior/ramp/clock mismatches 0/0/0/0; discriminating legacy samples 1748
+selector=n206 14 checks, 0 failures
