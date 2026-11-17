@@ -1,0 +1,4 @@
+FAIL candidate repairs selected finite interior call site
+FAIL candidate repairs selected finite interior call site
+forced=40 history=20 reference=20 invalid=4 terminal_zero=260 terminal_one=260
+46 checks, 2 failures
