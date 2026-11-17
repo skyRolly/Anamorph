@@ -19457,3 +19457,11 @@ The N2-04 Test 59 extension now also exercises a delayed second finite spike and
 
 The N2-04 branch was rebased onto actual integrated main `230da0e2`; its worklog and changelog cite the resulting implementation identity while preserving the earlier v5/v6 execution scopes.
 The N2-04 record links the separately committed sequential provenance controls and retains the earlier failed concurrent attempt as a distinct verification event.
+
+## Unreleased evidence audit — 2026-11-17
+
+A drift check of all current Unreleased entries found the merged N2-02 and
+N2-03 entries lacked the implementing PR Evidence Sources required by
+CHANGELOG_POLICY rule 2. Added PR #238 and PR #239 respectively; their existing
+test and ADR evidence remains. The independent N2-06 and N2-07 PR entries are
+corrected in their own branches. Historical release records are unchanged.
