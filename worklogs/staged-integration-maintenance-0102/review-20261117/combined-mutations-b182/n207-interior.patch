@@ -1,0 +1,7 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..ad8c1e88 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1307 +1307 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
+-            return input + blend * (saturated - input);
++            return (1.0f - blend) * input + blend * saturated;

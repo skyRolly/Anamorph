@@ -1,0 +1,69 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index acd809e2..ab467146 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1025 +1025 @@ void AnamorphEngine::adoptSnapshot (const EngineParameters& np, bool trusted) no
+-            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1462) and skipped `haas/velvet/chorus.reset()`
++            // `p = pendingP` (src/dsp/AnamorphEngine.cpp:1471) and skipped `haas/velvet/chorus.reset()`
+@@ -1299,0 +1300,9 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
++        // At exact blend=1, retain finite saturation rather than subtracting
++        // and re-adding the input. Invalid operands keep the original path
++        // so the existing final-output self-heal can still observe them.
++        const auto driveSample = [] (float input, float saturated, float blend) noexcept
++        {
++            if (juce::exactlyEqual (blend, 1.0f) && std::isfinite (input) && std::isfinite (saturated))
++                return saturated;
++            return input + blend * (saturated - input);
++        };
+@@ -1320 +1329 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
+-                    ch[i] += blend * (s - ch[i]);
++                    ch[i] = driveSample (ch[i], s, blend);
+@@ -1332,2 +1341,2 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
+-                L[i] += blend * (sl  - L[i]);
+-                R[i] += blend * (sr2 - R[i]);
++                L[i] = driveSample (L[i], sl, blend);
++                R[i] = driveSample (R[i], sr2, blend);
+@@ -1361,2 +1370,2 @@ void AnamorphEngine::processNonlinearRegion (float* L, float* R, int n, double r
+-                L[i] += blend * (sl  - L[i]);
+-                R[i] += blend * (sr2 - R[i]);
++                L[i] = driveSample (L[i], sl, blend);
++                R[i] = driveSample (R[i], sr2, blend);
+@@ -2018,0 +2028,10 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
++    // At exact Mix=1 the finite wet sample is the result; subtracting and
++    // re-adding the dry can cancel it. Preserve the original expression for
++    // every other coefficient and for invalid operands, so the existing final
++    // output self-heal still sees non-finite values.
++    const auto mixSample = [] (float dry, float wet, float m) noexcept
++    {
++        if (juce::exactlyEqual (m, 1.0f) && std::isfinite (dry) && std::isfinite (wet))
++            return wet;
++        return dry + m * (wet - dry);
++    };
+@@ -2075,2 +2094,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-            L[i] = dryL + m * (L[i] - dryL);
+-            R[i] = dryR + m * (R[i] - dryR);
++            L[i] = mixSample (dryL, L[i], m);
++            R[i] = mixSample (dryR, R[i], m);
+@@ -2112,2 +2131,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-        L[i] = dryL + m * (L[i] - dryL);
+-        R[i] = dryR + m * (R[i] - dryR);
++        L[i] = mixSample (dryL, L[i], m);
++        R[i] = mixSample (dryR, R[i], m);
+@@ -2315 +2334,11 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
++        // The conditioned dry ring is independent of a wet/output failure.
++        // Keep finite history, including the unaffected channel; a bad input may
++        // also have reached this ring, so scrub every non-finite slot before any
++        // later Mix read. The ring is fixed-size and this work replaces the
++        // existing bounded clear on the exceptional recovery path only.
++        for (int i = 0; i < ddSize; ++i)
++        {
++            if (! std::isfinite (ddL[i])) ddL[i] = 0.0f;
++            if (! std::isfinite (ddR[i])) ddR[i] = 0.0f;
++        }
++        dryAlignDelayBuffer.clear();
+@@ -2319,2 +2348,2 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-        // re-entry the conditioned dry rings above are cleared to prevent. Contents only, like
+-        // them: the write index may keep advancing, since every read now returns 0.
++        // re-entry the aligned dry clear and conditioned-ring scrub prevent. Contents only:
++        // the write index may keep advancing, since every stand-in read now returns 0.

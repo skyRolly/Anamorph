@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n207-smoothing mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "e4b5f4ad6b4df487e635abc1add0bfb886892a13",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n207-smoothing.patch",
+    "sha256": "5a1b1378983184a1e641b198bb51827fb1d0d19e4f443b1b39cb18f6a600b07c",
+    "purpose": "Restore or perturb only n207-smoothing as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n207"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n207"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    }
+  ]
+}

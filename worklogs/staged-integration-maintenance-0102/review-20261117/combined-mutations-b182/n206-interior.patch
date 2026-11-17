@@ -1,0 +1,7 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..21daca02 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -2036 +2036 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
+-        return dry + m * (wet - dry);
++        return (1.0f - m) * dry + m * wet;

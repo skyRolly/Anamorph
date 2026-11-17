@@ -1,0 +1,7 @@
+diff --git a/src/dsp/AnamorphEngine.cpp b/src/dsp/AnamorphEngine.cpp
+index ab467146..8412b18e 100644
+--- a/src/dsp/AnamorphEngine.cpp
++++ b/src/dsp/AnamorphEngine.cpp
+@@ -1049 +1049 @@ void AnamorphEngine::adoptSnapshot (const EngineParameters& np, bool trusted) no
+-        if (! pendingForced)
++        if (true) // negative control: premature forced adoption

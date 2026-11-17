@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n207-right-held mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "df52c1d958e64f79c2a1a7754b66250c3e60fa44",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n207-right-held.patch",
+    "sha256": "a153d34790b9bb9595c0926ab0cf0eecafb992ffbc61a28c7f5b04f1995840ee",
+    "purpose": "Restore or perturb only n207-right-held as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n207"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n207"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n203",
+        "0 failures"
+      ]
+    }
+  ]
+}

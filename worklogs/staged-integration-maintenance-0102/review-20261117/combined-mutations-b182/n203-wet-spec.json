@@ -1,0 +1,52 @@
+{
+  "purpose": "Isolated n203-wet mutation on the combined N2-04/N2-06/N2-07 source; all other engine contents and test headers are retained.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "d48b1f63b383966d71592ba922f7244f9bc48f26",
+  "patch": {
+    "commit": "spec",
+    "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n203-wet.patch",
+    "sha256": "e2b35a35e1c207f2f78055be73526d1293c16d739b1ebacd0e8ee6dfe783b84b",
+    "purpose": "Restore or perturb only n203-wet as a negative control."
+  },
+  "probes": [
+    {
+      "name": "combined-mutation",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/harness.cpp",
+      "support": [
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/AllocationGuard.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_conditioned_history_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_mix_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_drive_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_endpoint_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_control_tests.h",
+        "worklogs/staged-integration-maintenance-0102/review-20261117/combined-mutations-b182/n2_test_support.h"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n203"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL ",
+        "selector=n203"
+      ]
+    },
+    {
+      "program": "combined-mutation",
+      "args": [
+        "n202"
+      ],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "selector=n202",
+        "0 failures"
+      ]
+    }
+  ]
+}

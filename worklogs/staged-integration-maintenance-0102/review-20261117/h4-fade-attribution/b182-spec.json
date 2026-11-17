@@ -1,0 +1,56 @@
+{
+  "purpose": "Actual production MultibandWidth live-fade attribution boundary with deliberately injected states; the copied filters provide independent per-bank observations, not natural reachability or a recovery policy.",
+  "source_head": "b182cc0a6d68b105a0226cfcffd9fe6cfe767003",
+  "source_tree": "d91c4b01c8fda95d11f09cdc4b6627d16a7a84b5",
+  "probes": [
+    {
+      "name": "h4-fade-attribution",
+      "target": "AnamorphTests",
+      "commit": "spec",
+      "path": "worklogs/staged-integration-maintenance-0102/review-20261117/h4-fade-attribution/probe.cpp"
+    }
+  ],
+  "runs": [
+    {
+      "program": "h4-fade-attribution",
+      "args": [],
+      "expected_exit": 0,
+      "stdout_contains": [
+        "scenario=0 fade=1",
+        "scenario=1 fade=1",
+        "scenario=2 fade=1",
+        "0 failures"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-attribution"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that one bank output must be invalid"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-arithmetic"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that finite bank outputs guarantee finite fade"
+      ]
+    },
+    {
+      "program": "h4-fade-attribution",
+      "args": [
+        "bad-bank"
+      ],
+      "expected_exit": 1,
+      "stdout_contains": [
+        "FAIL negative claim that valid destination bank is invalid"
+      ]
+    }
+  ]
+}
