@@ -1,5 +1,14 @@
 # DOCUMENTATION_COVERAGE.md
 
+## Numerical maintenance integration issue inventory — 2026-11-17 UTC
+
+Reconciled the live KNOWN_ISSUES inventory with the combined source: N2-04,
+N2-06 and N2-07 corrections are present, while the independently tracked N2-05
+recovery limitation remains open. Preserved the historical audit, N2-01/V2-01,
+N2-08 and N2-09 records, and Proposed ADR-0074. This source-relative wording
+does not claim the disposable integration branch has been merged or that
+manual acceptance or release approval has occurred.
+
 ## ADR-0073 owner approval recording — 2026-11-09 (Asia/Shanghai)
 
 Recorded the owner's explicit acceptance and cleared Architecture Review Gate in

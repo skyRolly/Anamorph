@@ -11,19 +11,16 @@ crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
 The original audit's N2-04 through N2-07 were confirmed P3 findings on the
-reviewed production source. This integration candidate includes the N2-04,
-N2-06 and N2-07 corrections; N2-05 remains open. The [original evidence and
-follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md) are retained.
-Open correction PRs do not establish integration on main.
+reviewed historical source. This source includes the N2-04, N2-06 and N2-07
+corrections; the [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
+remain available. Those corrections do not resolve the other findings below.
 
-N2-04 (P3): this pending correction preserves finite conditioned dry history
-during the existing self-heal and sanitizes invalid ring slots. It remains open
-on main until the separate change is reviewed and merged. [Controls and limits](../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md).
-
-The proposed N2-06 Mix endpoint correction on this branch is independently
-reviewable; the finding remains open on main until that correction is merged.
-It does not resolve N2-01, N2-05, N2-08 or N2-09. The separate N2-04 and
-N2-07 corrections are also present in this integration candidate.
+N2-05 (P3): at Mix=0, invalid Wet arithmetic can propagate through the existing
+blend and cause the final self-heal to discard independently valid Dry output.
+Selecting Dry without separately detecting invalid Wet can instead leave Wet
+state invalid for later Mix re-entry. Detection and recovery ownership remain
+under investigation; see [the numerical audit](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
+and [the H4 recovery record](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
 crossover frequency, a finite wet LR4 state can overflow an intermediate
