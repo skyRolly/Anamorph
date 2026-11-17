@@ -82,6 +82,15 @@ re-clamped for the new rate, instead of copying it (ADR-0009, Implementation not
 Test 64). Applied **post-Mix, in
 place** (0.8.0).
 
+## Dry/Wet Mix endpoint
+
+At exact Mix=1, when both selected dry and Wet operands are finite, the Mix
+stage selects Wet directly. This avoids cancellation from subtracting and
+re-adding the dry signal. Other coefficients retain their historical float
+expression; a non-finite operand continues through that expression to the
+existing final-output self-heal. The phase-matched dry history, Level-Match
+reference, Mix clock and H4 full-wet gate keep their existing ownership.
+
 ## MultibandWidth — `src/dsp/MultibandWidth.{h,cpp}`
 
 1–4 phase-coherent bands from a cascade of LR lowpass crossovers (`x1,x2,x3`): peel one low

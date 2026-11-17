@@ -3290,7 +3290,7 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2275-2337` (a re-aim, not a re-anchor — the tool cannot compute it, so
+`src/dsp/AnamorphEngine.cpp:2285-2337` (a re-aim, not a re-anchor — the tool cannot compute it, so
 it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
 liveness evidence to name the mechanism the tree actually runs. The range shown is
@@ -19465,3 +19465,23 @@ N2-03 entries lacked the implementing PR Evidence Sources required by
 CHANGELOG_POLICY rule 2. Added PR #238 and PR #239 respectively; their existing
 test and ADR evidence remains. The independent N2-06 and N2-07 PR entries are
 corrected in their own branches. Historical release records are unchanged.
+
+## N2-06 finite Mix endpoint documentation audit — 2026-11-16
+
+Before editing live descriptions, the drift check found line anchors shifted by
+the proposed Mix-stage code; their symbol targets were re-derived and updated.
+The proposed focused engine regression is described in TESTING; the existing
+Multiband Enable output oracle now models exact Mix=1 Wet selection. The DSP
+algorithm and graph descriptions, ADR-0005 implementation note, current issue
+status and Unreleased changelog describe the same scoped endpoint behavior.
+Interior arithmetic, invalid-operand self-heal, H4 behavior and Test 25 remain
+separate. Historical audit files and measurements are unchanged.
+An initial hosted MSVC build exposed an undeduced friend-return test-helper
+error; the regression now uses the existing explicitly typed access pattern.
+The failed attempt remains recorded separately from new-head validation.
+
+## N2-06 Unreleased evidence — 2026-11-17
+
+The pre-edit audit found the Mix endpoint entry cited tests but omitted an
+implementing Evidence Source and verification marker. Added PR #244 and the
+existing automated verification status; no user-visible scope changed.

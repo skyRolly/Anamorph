@@ -30,6 +30,12 @@ including in entries written before 0.9.9 gave it that name.
   samples; invalid conditioned history is still replaced with zero.
   Evidence: commit `d1e627f5e7921f0d5a0834e5fbc0b83eae9ceb43`; DSP Test 59 extension; ADR-0009. [Verified]
 
+- **Mix at 100% preserves the finite processed sample.** When the delayed dry
+  and Wet operands are finite, selecting Wet avoids cancellation at the exact
+  endpoint; interior Mix arithmetic and non-finite self-healing remain intact.
+  Evidence: PR #244; N2-06 actual-engine endpoint and Multiband Enable
+  regression controls. [Verified]
+
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
   destinations still wait for the complete-state duck bottom.

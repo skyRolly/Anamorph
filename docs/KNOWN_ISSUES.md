@@ -18,6 +18,10 @@ N2-04 (P3): this pending correction preserves finite conditioned dry history
 during the existing self-heal and sanitizes invalid ring slots. It remains open
 on main until the separate change is reviewed and merged. [Controls and limits](../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md).
 
+The proposed N2-06 Mix endpoint correction on this branch is independently
+reviewable; the finding remains open on main until that correction is merged.
+It does not resolve N2-01, N2-04, N2-05, N2-07, N2-08 or N2-09.
+
 N2-08 (P3 review assessment): after an extreme but finite input at a high
 crossover frequency, a finite wet LR4 state can overflow an intermediate
 subtraction on the next finite sample. In the measured two-channel full-wet
