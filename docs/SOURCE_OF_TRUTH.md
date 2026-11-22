@@ -230,3 +230,5 @@ implementation evidence for the existing ADR-0004/0005 contract; it supplies no
 new H4, topology, numerical-interior or merge approval.
 
 The [independent H4 recovery follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) is supporting nonshipping evidence; it neither accepts ADR-0074 nor approves a production recovery policy.
+
+[ADR-0075](architecture/design-decisions/ADR-0075-mix-zero-recovery-ownership.md) is a Proposed N2-05 recovery decision. Its diagnostic evidence does not change Accepted ADR-0009 or authorize a production detection boundary.

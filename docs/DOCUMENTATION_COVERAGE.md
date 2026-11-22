@@ -19440,3 +19440,21 @@ not a proof of unreachability. Original evidence and Test 25 remain intact.
 
 The H4 decision packet now points to the later policy checkpoint, and the dated
 November 13 delivery ledger explicitly labels its PR-state table historical.
+
+## N2-05 proposed recovery ownership — 2026-11-17
+
+The pre-edit drift review confirmed ADR-0009 owns the current final-output guard, while the documented Mix=0 null and deliberately injected Wet-state control expose an unresolved earlier-detection decision. Registered Proposed ADR-0075 and updated the document inventory, source hierarchy and README. ADR-0067 already settles processor parameter-NaN mapping; the historical ADR-0009 Match-reset question is not silently closed. No executable behavior or accepted decision changes.
+
+## N2-05 combined-engine boundary evidence — 2026-11-17
+
+The pre-edit drift review found Proposed ADR-0075 and TESTING described the
+historical main-230 boundary but lacked the newly executed combined-engine
+zero/x4 comparison with N2-04 present. Added its scoped observations, negative
+controls and unobserved enclosing-session status. No accepted ADR or shipping
+DSP behavior changes.
+
+## N2-05 README classification audit - 2026-11-22 UTC
+
+The README documentation table explicitly lists Proposed ADR-0075 under
+Developer documentation. Its classification agrees with the ADR index,
+repository map and source hierarchy.
