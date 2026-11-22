@@ -330,8 +330,9 @@ independent self-heal correction below preserves valid raw scratch and history.
 
 A finite input near `1e38` at +24 dB Output Gain can overflow processed output.
 The existing self-heal replaces non-finite processed samples with zero and resets
-all its stateful wet nodes and conditioned dry/OS delay rings. It now retains the
-independent raw bypass ring and current scratch: T-01 validates every consuming
+its stateful wet nodes, aligned dry ring and OS compensation ring. N2-04 now
+preserves finite conditioned dry history while sanitizing invalid slots. D-02
+retains the independent raw bypass ring and current scratch: T-01 validates every consuming
 read before either scratch consumer, including reads of poison retained in history.
 An inactive scratch has no consumer and is refilled before use. Clearing it muted
 valid raw audio for a whole block; clearing only the ring also lost later delayed
@@ -370,3 +371,16 @@ N2-03: the Multiband Enable kernel selects its wet and phase-aligned dry endpoin
 exactly at 0/1, including a terminal sample inside a block. Its interior remains
 `from + blend * (to - from)`; this does not change the separate Mix interpolation
 or H4 gate. Evidence: Test 23 endpoint extension; ADR-0004/0005 implementation notes.
+
+## Conditioned dry history during self-heal (N2-04)
+
+On a detected non-finite processed output, the existing self-heal scans the
+fixed-size conditioned dry delay ring and replaces only non-finite slots with
+zero. Finite slots, including signed zero and the opposite channel, retain
+their bits. The aligned dry and oversampling-compensation rings still clear,
+the raw bypass policy remains D-02, and explicit reset/prepare remain unchanged.
+The scan is bounded by the already allocated ring size and runs only on the
+existing exceptional path; it introduces no graph, latency, parameter or
+smoother change. Test 59's `--n204-conditioned-history` extension observes
+actual wrapped and stand-in execution, poisoned history and unrelated valid
+history. [Scope and controls](../../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md).
