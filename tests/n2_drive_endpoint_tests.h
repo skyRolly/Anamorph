@@ -1,5 +1,6 @@
 #pragma once
 // H4's exact-Wet path isolates the Drive blend from separate Mix cancellation.
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -46,15 +47,45 @@ static void test(){
     auto interiorP=params(6);auto interior=std::make_unique<E>();
     auto saturated=std::make_unique<E>();interior->primeParameters(interiorP);
     saturated->primeParameters(interiorP);interior->prepare(48000,128);saturated->prepare(48000,128);
-    (interior.get()->*member(Blend{})).setCurrentAndTargetValue(.5f);
+    constexpr float interiorBlend = 0.5f;
+    (interior.get()->*member(Blend{})).setCurrentAndTargetValue(interiorBlend);
     juce::AudioBuffer<float>a(2,128),saturatedAudio(2,128);
-    for(int i=0;i<128;++i)for(int c=0;c<2;++c){const float x=(i&1)?1.0e8f:-1.0e8f;a.setSample(c,i,x);saturatedAudio.setSample(c,i,x);}
-    saturated->process(saturatedAudio);interior->process(a);
-    int interiorBad=0;
-    for(int i=0;i<128;++i)for(int c=0;c<2;++c){const float x=(i&1)?1.0e8f:-1.0e8f;
-        const float expectedInterior=x+.5f*(saturatedAudio.getSample(c,i)-x);
-        interiorBad+=!bits(a.getSample(c,i),expectedInterior);}
-    check(interiorBad==0,"N2-07: interior Drive blend retains historical float arithmetic");
+    // At +/-1e8 both expressions round to the same float. Include values at
+    // which the rounded subtraction changes the final result.
+    constexpr std::array interiorInputs { 1.0e8f, -1.0e8f, 16.0f, -16.0f, 256.0f, -256.0f };
+    for (int i = 0; i < a.getNumSamples(); ++i)
+    {
+        const float input = interiorInputs[static_cast<std::size_t>(i) % interiorInputs.size()];
+        for (int channel = 0; channel < a.getNumChannels(); ++channel)
+        {
+            a.setSample(channel, i, input);
+            saturatedAudio.setSample(channel, i, input);
+        }
+    }
+    saturated->process(saturatedAudio);
+    interior->process(a);
+
+    const auto checkInterior = [&](int channel, const char* message)
+    {
+        int mismatches = 0;
+        int discriminating = 0;
+        for (int i = 0; i < a.getNumSamples(); ++i)
+        {
+            const float input = interiorInputs[static_cast<std::size_t>(i) % interiorInputs.size()];
+            const float saturation = saturatedAudio.getSample(channel, i);
+            const float historical = input + interiorBlend * (saturation - input);
+            const float reordered = (1.0f - interiorBlend) * input + interiorBlend * saturation;
+            mismatches += !bits(a.getSample(channel, i), historical);
+            discriminating += !bits(historical, reordered);
+        }
+        std::printf("interior ch=%d discriminating=%d mismatches=%d\n", channel, discriminating, mismatches);
+        check(mismatches == 0, message);
+        return discriminating;
+    };
+    const int leftDiscriminating = checkInterior(0, "N2-07: left interior Drive blend retains historical float arithmetic");
+    const int rightDiscriminating = checkInterior(1, "N2-07: right interior Drive blend retains historical float arithmetic");
+    check(leftDiscriminating > 0 && rightDiscriminating > 0,
+          "N2-07 premise: both channels distinguish reordered interior Drive arithmetic");
     // Follow copies of both Drive clocks across the actual unwrapped transition.
     auto rampP=params(0);auto ramp=std::make_unique<E>();ramp->primeParameters(rampP);ramp->prepare(48000,128);
     rampP.driveDb=6;ramp->setParameters(rampP);auto gClock=ramp.get()->*member(Drive{}),bClock=ramp.get()->*member(Blend{});

@@ -19462,3 +19462,10 @@ settled, terminal, wrapped and held results primarily on the left; separate
 right-channel observations now cover those boundaries. TESTING describes the
 injected held-fade premise. The Unreleased entry now cites PR #245 and its
 automated verification status, as required by CHANGELOG_POLICY rule 2.
+
+## N2-07 interior fixture audit - 2026-11-22 UTC
+
+The extreme interior inputs alone yielded identical bits for the historical
+expression and the reordered weighted sum. The fixture also uses smaller
+finite inputs and checks arithmetic and sensitivity independently on both
+channels. TESTING records the revised interior coverage.
