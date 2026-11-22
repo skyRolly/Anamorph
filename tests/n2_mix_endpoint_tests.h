@@ -12,11 +12,17 @@ struct Mix { using type = juce::SmoothedValue<float> Engine::*; friend type memb
 struct Dry { using type = juce::AudioBuffer<float> Engine::*; friend type member(Dry); };
 struct Write { using type = int Engine::*; friend type member(Write); };
 struct OS { using type = bool Engine::*; friend type member(OS); };
+struct CurrentOversampler
+{
+    using type = juce::dsp::Oversampling<float>* (Engine::*)() noexcept;
+    friend type member(CurrentOversampler);
+};
 template<class Tag, typename Tag::type Ptr> struct Access { friend typename Tag::type member(Tag) { return Ptr; } };
 template struct Access<Mix, &Engine::mixSmooth>;
 template struct Access<Dry, &Engine::dryDelayBuffer>;
 template struct Access<Write, &Engine::dryDelayWrite>;
 template struct Access<OS, &Engine::osRunning>;
+template struct Access<CurrentOversampler, &Engine::currentOversampler>;
 
 static bool bits(float a,float b) { return std::memcmp(&a,&b,sizeof a)==0; }
 static uint32_t randomState=0x81c31ab5u;
@@ -159,6 +165,12 @@ static void test()
     // subject reaches Mix=1 inside a block, before its own H4 gate can engage.
     int wrappedEndpointSamples=0,wrappedEndpointBad=0,wrappedLegacyDifferent=0,wrappedTerminalSamples=0;
     bool wrappedPremise=true;int actualLatency=0;
+    bool subjectSelectsX4 = true, referenceSelectsX4 = true;
+    const auto selectsX4 = [](Engine& wrappedEngine)
+    {
+        const auto* oversampler = (wrappedEngine.*member(CurrentOversampler{}))();
+        return oversampler != nullptr && oversampler->getOversamplingFactor() == 4u;
+    };
     for(float amplitude:{0.125f,0.7f,12.345f,1234.567f,123456.7f,1.0e6f})
     {
         anamorph::EngineParameters wp;wp.algorithm=anamorph::Algorithm::Haas;wp.algoAmount=0.0f;
@@ -177,6 +189,8 @@ static void test()
         actualLatency=subject->getLatencySamples();
         wrappedPremise=wrappedPremise&&(subject.get()->*member(OS{}))&&(wetReference.get()->*member(OS{}))
                          &&actualLatency>0&&wetReference->getLatencySamples()==actualLatency;
+        subjectSelectsX4 &= selectsX4(*subject);
+        referenceSelectsX4 &= selectsX4(*wetReference);
         wp.mix=1.0f;subject->setParameters(wp);auto endpointClock=subject.get()->*member(Mix{});
         int caseLegacy=0;
         for(int block=0;block<12;++block)
@@ -197,7 +211,9 @@ static void test()
         wrappedLegacyDifferent+=caseLegacy;
         std::printf("  x4 amplitude=%g legacy-differences=%d\n",double(amplitude),caseLegacy);
     }
-    check(wrappedPremise,"N2-06 premise: subject and independent wet twin execute the actual x4 wrap");
+    check(wrappedPremise,"N2-06 premise: subject and independent Wet twin wrap at the same positive latency");
+    check(subjectSelectsX4 && referenceSelectsX4,
+          "N2-06 premise: subject and independent Wet twin both select a 4x oversampler");
     check(wrappedTerminalSamples>0&&wrappedEndpointSamples>0&&wrappedLegacyDifferent>0&&wrappedEndpointBad==0,
           "N2-06: wrapped terminal Mix selects the independently observed wet output");
     std::printf("  x4 terminal samples=%d mismatches=%d legacy-differences=%d latency=%d\n",

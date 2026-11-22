@@ -19476,3 +19476,9 @@ under both Clang and GCC LTO. Renamed the test-local input variable without
 changing the oracle or warning baselines. TESTING records the portability and
 warning-gate context; the failed hosted attempt remains separate from new-head
 validation.
+
+## N2-06 oversampler selection audit - 2026-11-22 UTC
+
+TESTING records the direct factor check for both engines in the wrapped
+terminal Mix regression. Equal positive latency and wrap execution are
+checked separately from the actual JUCE oversampling factor.
