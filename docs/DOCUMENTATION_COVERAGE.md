@@ -19452,3 +19452,9 @@ historical main-230 boundary but lacked the newly executed combined-engine
 zero/x4 comparison with N2-04 present. Added its scoped observations, negative
 controls and unobserved enclosing-session status. No accepted ADR or shipping
 DSP behavior changes.
+
+## N2-05 README classification audit - 2026-11-22 UTC
+
+The README documentation table explicitly lists Proposed ADR-0075 under
+Developer documentation. Its classification agrees with the ADR index,
+repository map and source hierarchy.
