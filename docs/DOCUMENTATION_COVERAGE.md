@@ -19577,8 +19577,14 @@ sites, without changing the Accepted decision or its historical tests.
 The pre-edit checker run from post-244 to post-245 reported 601 checked
 anchors and two re-spelled or removed anchors beyond its judgment. ADR-0006
 is now opted into its existing symbol gloss check. The two recognized claims
-resolve to their named calls. The self-test passed 277 cases, and disposable
+resolve to their named calls. The self-test passed 279 cases, and disposable
 checks rejected each moved call-site anchor, an absent symbol and an added
 same-path citation accompanying a wrong claim. A valid same-path addition
 passed. TESTING records the count-mismatch limit and these controls. The
 gloss check does not establish stage order on its own.
+
+Review of the first candidate found its self-test rejected an additional valid
+gloss and the repository map still described the previous opt-in set. The
+self-test now requires both call-site claims while allowing other valid claims;
+it rejects a missing required claim or an invalid additional gloss. The map
+describes the current checker scope.

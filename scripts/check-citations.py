@@ -2476,12 +2476,17 @@ def self_test():
     adr = "docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md"
     engine = "src/dsp/AnamorphEngine.cpp"
     adr_text = read(adr)
-    claims = [(whole, gloss_after(adr_text, span))
-              for whole, tracked, span, _anchors in citations(adr_text)
-              if tracked == engine and gloss_after(adr_text, span) is not None]
+
+    def engine_claims(text):
+        return [(whole, gloss_after(text, span))
+                for whole, tracked, span, _anchors in citations(text)
+                if tracked == engine and gloss_after(text, span) is not None]
+
+    required = {"monoMaker.process", "soloMonitor.process"}
+    claims = engine_claims(adr_text)
     check("ADR-0006 is opted into the gloss check", adr in GLOSS_CHECKED_DOCS, True)
     check("ADR-0006 names both call-site symbols",
-          [gloss for _whole, gloss in claims], ["monoMaker.process", "soloMonitor.process"])
+          required.issubset({gloss for _whole, gloss in claims}), True)
     check("ADR-0006 call-site glosses resolve", glossed_problems_in(adr, adr_text), [])
     mono = next((whole for whole, gloss in claims if gloss == "monoMaker.process"),
                 f"{engine}:1")
@@ -2504,6 +2509,13 @@ def self_test():
     check("an added citation cannot exempt an earlier wrong claim",
           [p[2] for p in glossed(added)], ["monoMaker.process"])
     check("a correct added same-path citation stays valid", glossed(f"{both}, {engine}:2"), [])
+    condition_line = next((n for n, line in enumerate(read(engine).splitlines(), 1)
+                           if "if (p.monoMakerEnable)" in line), 1)
+    extra_gloss = f"{engine}:{condition_line} (`p.monoMakerEnable`)"
+    with_extra = f"{both}, {extra_gloss}"
+    check("an additional gloss retains the required call-site claims",
+          required.issubset({gloss for _whole, gloss in engine_claims(with_extra)}), True)
+    check("an additional valid same-path gloss passes", glossed(with_extra), [])
 
     # A LISTED DOCUMENT THAT IS GONE is a finding, not a traceback. `read()`
     # returns contents or raises, so this branch is the only thing standing
