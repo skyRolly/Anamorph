@@ -1308,6 +1308,7 @@ def verify_versioned_lines():
 # documents: 166 citations, 60 glossed, 13 of them landing on a guarded line and
 # therefore compared by value, 0 firing. The other 47 glosses are ordinary symbol
 # claims and keep the containment test, which is the right one for them.
+# ADR-0006 joins for the two directly reviewed serial-chain call-site claims.
 GLOSS_CHECKED_DOCS = (
     "docs/architecture/ARCHITECTURE.md",
     "docs/architecture/LATENCY_MODEL.md",
@@ -1317,6 +1318,7 @@ GLOSS_CHECKED_DOCS = (
     "docs/architecture/SIGNAL_FLOW.md",
     "docs/architecture/STATE_SERIALIZATION.md",
     "docs/architecture/THREAD_MODEL.md",
+    "docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md",
     # The dependency-pin set (2026-09-17, ADR-0054).
     "THIRD_PARTY_LICENSES.md",
     "docs/HANDOVER.md",
@@ -2468,6 +2470,40 @@ def self_test():
     finally:
         globals()["TRACKED"] = saved_tracked
     check("...and TRACKED is restored afterwards", "no/such/file.cpp" in TRACKED, False)
+
+    # ADR-0006's source claims must remain visible to the gloss gate even when
+    # another citation to the same file changes the drift check's pairing path.
+    adr = "docs/architecture/design-decisions/ADR-0006-strict-serial-signal-chain.md"
+    engine = "src/dsp/AnamorphEngine.cpp"
+    adr_text = read(adr)
+    claims = [(whole, gloss_after(adr_text, span))
+              for whole, tracked, span, _anchors in citations(adr_text)
+              if tracked == engine and gloss_after(adr_text, span) is not None]
+    check("ADR-0006 is opted into the gloss check", adr in GLOSS_CHECKED_DOCS, True)
+    check("ADR-0006 names both call-site symbols",
+          [gloss for _whole, gloss in claims], ["monoMaker.process", "soloMonitor.process"])
+    check("ADR-0006 call-site glosses resolve", glossed_problems_in(adr, adr_text), [])
+    mono = next((whole for whole, gloss in claims if gloss == "monoMaker.process"),
+                f"{engine}:1")
+    solo = next((whole for whole, gloss in claims if gloss == "soloMonitor.process"),
+                f"{engine}:1")
+    both = f"{mono} (`monoMaker.process`), {solo} (`soloMonitor.process`)"
+    wrong_mono = f"{engine}:1 (`monoMaker.process`), {solo} (`soloMonitor.process`)"
+    wrong_solo = f"{mono} (`monoMaker.process`), {engine}:1 (`soloMonitor.process`)"
+    absent = f"{mono} (`monoMaker.absentForCitationTest`), {solo} (`soloMonitor.process`)"
+    check("serial call-site claims pass together", glossed(both), [])
+    check("an unrelated Mono Maker anchor fails", [p[2] for p in glossed(wrong_mono)],
+          ["monoMaker.process"])
+    check("an unrelated Band Solo anchor fails", [p[2] for p in glossed(wrong_solo)],
+          ["soloMonitor.process"])
+    check("an absent symbol fails", [p[2] for p in glossed(absent)],
+          ["monoMaker.absentForCitationTest"])
+    added = f"{wrong_mono}, {engine}:2"
+    check("the added same-path citation creates a count mismatch",
+          len(citations(added)), len(citations(both)) + 1)
+    check("an added citation cannot exempt an earlier wrong claim",
+          [p[2] for p in glossed(added)], ["monoMaker.process"])
+    check("a correct added same-path citation stays valid", glossed(f"{both}, {engine}:2"), [])
 
     # A LISTED DOCUMENT THAT IS GONE is a finding, not a traceback. `read()`
     # returns contents or raises, so this branch is the only thing standing

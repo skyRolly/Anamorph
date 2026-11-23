@@ -3290,11 +3290,14 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2294-2356` (a deliberate re-aim declared in
-`DELIBERATE_REAIMS` and machine-checked against
-`Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
-liveness evidence to name the mechanism the tree actually runs. The range shown is
-mapped to current source; at the dated sign-off it ended at line 2327.
+the self-heal block and restating the leaf-layer `-Werror=function-effects` gate's
+liveness evidence to name the mechanism the tree actually ran. At sign-off, the
+re-aim to `14422edb:src/dsp/AnamorphEngine.cpp:1269-1313` was declared in
+`DELIBERATE_REAIMS` and checked against `Defensive NaN / Inf self-heal`.
+The current live range is `src/dsp/AnamorphEngine.cpp:2294-2356`. Ordinary
+citation mapping tracks its line identity against the selected base; there is
+no current declaration for this audit citation, and semantic ownership still
+requires direct source review.
 
 **A definition whose signature carried a comma inside template arguments was discarded whole.**
 `_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
@@ -19559,3 +19562,23 @@ conditioned dry, Mix and State 150 corrections. Live signal-flow, recovery
 and Level Match references use the combined engine. TESTING retains the
 independent endpoint regressions and the injected held-envelope premise.
 The Unreleased entries retain their distinct implementing evidence.
+
+## Post-integration citation review - 2026-11-23T16:34:11Z
+
+The pre-edit audit found that the 2026-08-19 sign-off paragraph attributed
+its current self-heal citation to an active declaration. The original
+sign-off record and its then-current declaration identify the historical
+reviewed range as 1269-1313. The paragraph now separates that review from the
+live range, ordinary line mapping and direct semantic source review.
+
+ADR-0006's source evidence pointed to an earlier A/B restore region. Its source
+evidence now names the post-Mix Mono Maker and post-output Band Solo call
+sites, without changing the Accepted decision or its historical tests.
+The pre-edit checker run from post-244 to post-245 reported 601 checked
+anchors and two re-spelled or removed anchors beyond its judgment. ADR-0006
+is now opted into its existing symbol gloss check. The two recognized claims
+resolve to their named calls. The self-test passed 277 cases, and disposable
+checks rejected each moved call-site anchor, an absent symbol and an added
+same-path citation accompanying a wrong claim. A valid same-path addition
+passed. TESTING records the count-mismatch limit and these controls. The
+gloss check does not establish stage order on its own.

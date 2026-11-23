@@ -6754,11 +6754,16 @@ full gate.
 
 **`check-citations.py` needs a base revision, and which one you pick changes the answer.** CI compares
 against the *previous push*; a local run against `origin/main` can differ, because a document whose
-citation *count* differs from the base falls back to ordinal pairing, which only judges base
-spellings still present verbatim — and a re-anchor changes the spelling. Run **both** before
+citation *count* differs from the base falls back to matching base spellings still present verbatim
+and reports re-spelled or removed anchors as unchecked. Run **both** before
 concluding the gate is green. If you re-anchor a citation deliberately, declare the pair in
 `DELIBERATE_REAIMS` in the **same change set**: the tool cannot tell a repair from a drift, so a fix
 landed on its own turns the gate red on the commit that fixed it.
+
+ADR-0006 opts into symbol-level gloss checks for the Mono Maker and Band Solo call sites.
+The citation self-test requires both recognized claims and exercises wrong targets, an absent
+symbol and a same-path addition. The gloss check verifies the named source text; stage order
+still requires source review and the corresponding DSP tests.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
