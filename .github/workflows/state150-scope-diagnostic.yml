@@ -2,7 +2,7 @@ name: State 150 Scope Diagnostic
 
 on:
   push:
-    branches: [codex/state-150-diagnostics]
+    branches: [codex/state-150-toolset-comparison]
 
 permissions:
   contents: read
@@ -10,12 +10,47 @@ permissions:
 jobs:
   scope-bit-trace:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Trace ScopeBuffer payloads with installed MSVC toolsets
+      - name: Add the supported MSVC 14.51 component to the diagnostic runner
         shell: pwsh
-        run: ./tests/experiments/state150_scope_bits.ps1
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerDir = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer'
+          $instance = & (Join-Path $installerDir 'vswhere.exe') -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$instance) { throw 'Visual Studio x64 tools are unavailable' }
+          $toolsets = Join-Path $instance 'VC\Tools\MSVC'
+          $defaultVersion = Join-Path $instance 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt'
+          $before = (Get-Content $defaultVersion).Trim()
+          "observed=$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')) default_before=$before"
+          if (!(Get-ChildItem $toolsets -Directory -Filter '14.51.*')) {
+            $setup = Join-Path $installerDir 'setup.exe'
+            $signature = Get-AuthenticodeSignature $setup
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
+              throw 'Visual Studio Installer signature could not be verified'
+            }
+            $component = 'Microsoft.VisualStudio.Component.VC.14.51.x86.x64'
+            $quotedPath = '"{0}"' -f $instance
+            $install = Start-Process -FilePath $setup -ArgumentList @('modify', '--installPath', $quotedPath, '--add', $component, '--quiet', '--norestart', '--noUpdateInstaller') -PassThru -Wait
+            "installer_exit=$($install.ExitCode) component=$component"
+            if ($install.ExitCode -ne 0 -and $install.ExitCode -ne 3010) { throw 'Side-by-side installation failed' }
+          }
+          Get-ChildItem $toolsets -Directory | ForEach-Object { "installed_toolset=$($_.Name)" }
+          $after = (Get-Content $defaultVersion).Trim()
+          "default_after=$after"
+          if ($before -ne $after) { throw 'The diagnostic install changed the default toolset' }
+          if (!(Get-ChildItem $toolsets -Directory -Filter '14.51.*')) { throw 'MSVC 14.51 is still unavailable' }
+      - name: Compare toolsets and run the exact State 150 fixture controls
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $candidate = 'c850b568715375eeab2b173ecc1f30ab2d177fab'
+          git fetch --no-tags origin $candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Correction commit fetch failed' }
+          python tests/experiments/state150_candidate_cases.py $candidate state150-cases
+          if ($LASTEXITCODE -ne 0) { throw 'Correction fixture preparation failed' }
+          ./tests/experiments/state150_scope_bits.ps1 -Cases state150-cases
       - name: Retain trace, compiler output, and assembly
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -24,4 +59,7 @@ jobs:
           path: |
             state150-results/**/*.txt
             state150-results/**/*.asm
+            state150-cases/identity.json
+            state150-cases/**/*.cpp
+            state150-cases/**/*.h
           if-no-files-found: error

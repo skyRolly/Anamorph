@@ -1,3 +1,5 @@
+param([string]$Cases)
+
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -23,6 +25,17 @@ $defaultVcvars = Join-Path $instances[0] 'VC\Auxiliary\Build\vcvars64.bat'
 if (!(Test-Path $defaultVcvars)) { throw 'No default x64 vcvars environment found' }
 
 $versions = @($toolsets.Keys | Sort-Object)
+$matrix = @{
+    trace = @{ include = (Join-Path $root 'src'); source = (Join-Path $PSScriptRoot 'state150_scope_bits.cpp') }
+}
+if ($Cases) {
+    $caseRoot = (Resolve-Path $Cases).Path
+    Get-Content (Join-Path $caseRoot 'identity.json')
+    foreach ($case in @('candidate', 'legacy-seed', 'right-unpack')) {
+        $dir = Join-Path $caseRoot $case
+        $matrix[$case] = @{ include = $dir; source = (Join-Path $dir 'probe.cpp') }
+    }
+}
 $identity = @(
     "observed=$(UtcNow)",
     "commit=$(git -C $root rev-parse HEAD)",
@@ -38,47 +51,57 @@ $identity = @(
 $identity | Tee-Object -FilePath (Join-Path $report 'source.txt')
 
 $harnessErrors = 0
-foreach ($version in @('default') + $versions) {
+if ($versions.Count -eq 0) { $versions = @('default') }
+foreach ($version in $versions) {
     $vcvars = $defaultVcvars
     $selection = ''
     if ($version -ne 'default') {
         $vcvars = $toolsets[$version]
         $selection = "-vcvars_ver=$version"
     }
-    foreach ($profile in @('optimized', 'minimal')) {
-        $optimization = '/Od /Ob0'
-        if ($profile -eq 'optimized') { $optimization = '/O2 /Ob2' }
-        $out = Join-Path $report "$version-$profile"
-        New-Item -Path $out -ItemType Directory | Out-Null
-        $flags = "/nologo /Bv /std:c++latest /EHsc /MD /DNDEBUG /arch:AVX2 /W4 $optimization /FAcs"
-        $compile = @"
+    foreach ($case in ($matrix.Keys | Sort-Object)) {
+        $include = $matrix[$case].include
+        $source = $matrix[$case].source
+        foreach ($profile in @('optimized', 'minimal')) {
+            $optimization = '/Od /Ob0'
+            if ($profile -eq 'optimized') { $optimization = '/O2 /Ob2' }
+            $out = Join-Path $report "$version-$case-$profile"
+            New-Item -Path $out -ItemType Directory | Out-Null
+            $flags = "/nologo /Bv /std:c++latest /EHsc /MD /DNDEBUG /arch:AVX2 /W4 $optimization /FAcs"
+            $compile = @"
 @echo off
 call "$vcvars" $selection
 if errorlevel 1 exit /b 3
 where cl
 echo VCToolsVersion=%VCToolsVersion% WindowsSDKVersion=%WindowsSDKVersion%
 echo flags=$flags (default /fp:precise)
-cl $flags /I"$root\src" /Faprobe.asm /Feprobe.exe /Foprobe.obj "$root\tests\experiments\state150_scope_bits.cpp"
+cl $flags /I"$include" /Faprobe.asm /Feprobe.exe /Foprobe.obj "$source"
 exit /b %errorlevel%
 "@
-        $compile | Set-Content -LiteralPath (Join-Path $out 'compile.cmd') -Encoding ascii
-        Push-Location $out
-        try {
-            "toolset=$version profile=$profile observed=$(UtcNow) vcvars=$vcvars"
-            & cmd.exe /d /c compile.cmd 2>&1 | Tee-Object -FilePath 'compiler.txt'
-            $buildExit = $LASTEXITCODE
-            "build_exit=$buildExit" | Tee-Object -FilePath 'result.txt'
-            if ($buildExit -ne 0) {
-                $harnessErrors++
-                continue
+            $compile | Set-Content -LiteralPath (Join-Path $out 'compile.cmd') -Encoding ascii
+            Push-Location $out
+            try {
+                "toolset=$version case=$case profile=$profile observed=$(UtcNow) vcvars=$vcvars"
+                & cmd.exe /d /c compile.cmd 2>&1 | Tee-Object -FilePath 'compiler.txt'
+                $buildExit = $LASTEXITCODE
+                "build_exit=$buildExit" | Tee-Object -FilePath 'result.txt'
+                if ($buildExit -ne 0) {
+                    $harnessErrors++
+                    continue
+                }
+                & .\probe.exe 2>&1 | Tee-Object -FilePath 'trace.txt'
+                $probeExit = $LASTEXITCODE
+                "probe_exit=$probeExit" | Tee-Object -FilePath 'result.txt' -Append
+                "binary_sha256=$((Get-FileHash 'probe.exe' -Algorithm SHA256).Hash.ToLowerInvariant())" | Tee-Object -FilePath 'result.txt' -Append
+                $expected = switch ($case) {
+                    'candidate' { @(0) }
+                    'right-unpack' { @(1) }
+                    default { @(0, 1) }
+                }
+                if ($probeExit -notin $expected) { $harnessErrors++ }
             }
-            & .\probe.exe 2>&1 | Tee-Object -FilePath 'trace.txt'
-            $probeExit = $LASTEXITCODE
-            "probe_exit=$probeExit" | Tee-Object -FilePath 'result.txt' -Append
-            "binary_sha256=$((Get-FileHash 'probe.exe' -Algorithm SHA256).Hash.ToLowerInvariant())" | Tee-Object -FilePath 'result.txt' -Append
-            if ($probeExit -notin 0, 1) { $harnessErrors++ }
+            finally { Pop-Location }
         }
-        finally { Pop-Location }
     }
 }
 if ($harnessErrors -ne 0) { throw "$harnessErrors builds or diagnostic controls failed" }
