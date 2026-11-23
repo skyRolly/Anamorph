@@ -19465,3 +19465,10 @@ N2-03 entries lacked the implementing PR Evidence Sources required by
 CHANGELOG_POLICY rule 2. Added PR #238 and PR #239 respectively; their existing
 test and ADR evidence remains. The independent N2-06 and N2-07 PR entries are
 corrected in their own branches. Historical release records are unchanged.
+
+## State 150 scope payload fixture audit
+
+The [Windows scope trace](https://github.com/skyRolly/Anamorph/actions/runs/45087445600/job/137409173103)
+observed at 2026-11-23T00:13:34Z located the changed signaling NaN bit in the
+fixture input on optimized MSVC 19.52. TESTING records byte seeding and the
+new input assertion alongside the existing stereo round-trip assertion.

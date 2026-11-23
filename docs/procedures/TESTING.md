@@ -549,6 +549,12 @@ original-source fixture in temporary storage: original 3/3 contract failures,
 fixed 3/3 successes, removed-validation and missing-invalidation controls detected.
 Schedules execute on one thread, so the original control does not execute a C++ race.
 
+The State 150 payload fixture writes both channels from integer object
+representations and checks the input bits before publication. The accepted
+snapshot must match the same patterns, including both signs of signaling NaN.
+Optimized MSVC 19.52 quieted a float-constructed fixture value before the
+producer received it.
+
 State 150 also observes actual Vectorscope `repaint()` invalidations using a
 headless cached-image observer and the same scheduler called by visible ticks.
 It accepts an active picture, polls 8,000 zeros, rejects the final-silence paint

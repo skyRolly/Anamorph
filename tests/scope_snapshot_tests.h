@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gui/ScopeSnapshotCache.h"
+#include <cstring>
 #include <tuple>
 
 namespace anamorph
@@ -132,15 +133,28 @@ static void testScopeSnapshotPublication()
 
     constexpr std::array<std::uint32_t, 8> bits { 0, 0x80000000u, 0x3f800000u, 1,
         0x00800000u, 0x7f800000u, 0x7fc12345u, 0x7f812345u };
+    // Seed object representations directly. Optimized MSVC 19.52 can quiet
+    // the signaling NaN in a float-valued fixture before it reaches the ring.
     for (std::size_t i = 0; i < bits.size(); ++i)
-    { l[i] = std::bit_cast<float> (bits[i]); r[i] = std::bit_cast<float> (bits[i] ^ 0x80000000u); }
+    {
+        const auto left = bits[i];
+        const std::uint32_t right = left ^ 0x80000000u;
+        std::memcpy (&l[i], &left, sizeof left);
+        std::memcpy (&r[i], &right, sizeof right);
+    }
+    const auto bitsMatch = [&bits] (const float* actualL, const float* actualR)
+    {
+        for (std::size_t i = 0; i < bits.size(); ++i)
+            if (std::bit_cast<std::uint32_t> (actualL[i]) != bits[i]
+                || std::bit_cast<std::uint32_t> (actualR[i]) != (bits[i] ^ 0x80000000u))
+                return false;
+        return true;
+    };
+    check (bitsMatch (l.data(), r.data()), "scope: special-value fixture seeds exact stereo input bits");
     ring->pushBlock (l.data(), r.data(), static_cast<int> (bits.size()));
     read = ring->readLatestSnapshot (outL.data(), outR.data(), static_cast<int> (bits.size()));
-    bool preserved = read.valid;
-    for (std::size_t i = 0; i < bits.size(); ++i)
-        preserved = preserved && std::bit_cast<std::uint32_t> (outL[i]) == bits[i]
-            && std::bit_cast<std::uint32_t> (outR[i]) == (bits[i] ^ 0x80000000u);
-    check (preserved, "scope: stereo packing preserves zero/subnormal/Inf/NaN payload bits");
+    check (read.valid && bitsMatch (outL.data(), outR.data()),
+           "scope: stereo packing preserves zero/subnormal/Inf/NaN payload bits");
 
     // Prepare/reset must leave the display ring's lifetime/count intact.
     auto engine = std::make_unique<anamorph::AnamorphEngine>();
