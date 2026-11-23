@@ -96,3 +96,16 @@ float expression, dry-bank progression, alignment and Level-Match reference rule
 remain as decided above. This repairs rounding at an existing boundary; H4's cold
 state after full-wet idle remains a separate N2-01 owner decision. Evidence:
 [Test 23 extension](../../../worklogs/MULTIBAND_ENDPOINTS_0.10.2.md).
+
+## N2-06 Mix endpoint implementation note
+
+At exact Mix=1 the existing Mix stage selects the finite Wet operand when both
+Wet and the selected delayed dry are finite. This avoids cancellation in
+`dry + 1 * (wet - dry)` without moving the stage or changing the dry-source
+smoothstep, delayed histories or Level-Match reference. All other coefficients
+retain that float expression. Non-finite operands still take the original
+expression so the existing final-output self-heal remains observable. H4's
+exact-Wet shortcut and its unresolved dry-state re-entry limitation are
+independent. The actual-engine endpoint selector and the existing Match-on and
+Match-off Multiband Enable oracle cover the changed output boundary; they do
+not independently verify the entire Level-Match algorithm.

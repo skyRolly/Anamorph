@@ -7904,3 +7904,22 @@ allocation guard is armed around exceptional processing when supported. The [rec
 separates the original-clear and unsafe-retention negative controls from
 provisional results, exact-source replay and hosted validation. It does not
 claim an H4 or N2-05 correction.
+
+## Finite Mix=1 Wet endpoint (N2-06)
+
+`AnamorphTests --mix-wet-endpoint` exercises actual engine output with an
+independently calculated Wet, historical interior arithmetic, a Mix ramp
+ending inside a block, the smoother clock and the extreme cancellation witness.
+Selected non-finite dry and Wet controls check that the existing final-output
+self-heal remains observable; a selected x4 stand-in and actual nonlinear x4
+wrap exercise the latency and smoother premises separately. The wrapped
+terminal comparison checks that the subject and the one-band H4 Wet twin each
+select a JUCE oversampler whose factor is 4. The Wet twin supplies the terminal
+output comparison and a legacy-expression sensitivity premise. The existing
+`--multiband-endpoints` oracle models the corrected Mix=1 boundary while still
+checking actual Match-on and Match-off Enable output. It does not independently
+verify the complete Level-Match algorithm. Existing Test 25 is unchanged.
+The test's private-state access uses explicitly typed friend declarations so
+the same regression compiles under MSVC as well as GCC and Clang. The wrapped
+comparison uses distinct local names so the GCC and Clang warning gates remain
+active without a baseline exception.
