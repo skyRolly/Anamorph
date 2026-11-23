@@ -10,13 +10,16 @@ N2-01 (P2) and V2-01 remain open on the investigated main: H4 skips recursive dr
 crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
-The original audit's N2-04–07 remain confirmed P3 findings on the reviewed
-production source and are tracked independently for maintenance; [original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md)
-are retained. Open correction PRs do not establish integration on main.
+The original audit confirmed N2-05 through N2-07 on its reviewed source.
+N2-05 and N2-07 remain open. [Original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md).
 
-The proposed N2-06 Mix endpoint correction on this branch is independently
-reviewable; the finding remains open on main until that correction is merged.
-It does not resolve N2-01, N2-04, N2-05, N2-07, N2-08 or N2-09.
+N2-04 (P3) was integrated through PR #243. The existing self-heal preserves
+finite conditioned dry history and sanitizes invalid ring slots.
+[Controls and limits](../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md).
+
+N2-06 (P3) is addressed in this source by PR #244. At exact Mix=1 with
+finite operands, the engine selects Wet directly and retains the historical
+interior and invalid-operand arithmetic.
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
 crossover frequency, a finite wet LR4 state can overflow an intermediate

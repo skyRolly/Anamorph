@@ -549,6 +549,12 @@ original-source fixture in temporary storage: original 3/3 contract failures,
 fixed 3/3 successes, removed-validation and missing-invalidation controls detected.
 Schedules execute on one thread, so the original control does not execute a C++ race.
 
+The State 150 payload fixture writes both channels from integer object
+representations and checks the input bits before publication. The accepted
+snapshot must match the same patterns, including both signs of signaling NaN.
+Optimized MSVC 19.52 quieted a float-constructed fixture value before the
+producer received it.
+
 State 150 also observes actual Vectorscope `repaint()` invalidations using a
 headless cached-image observer and the same scheduler called by visible ticks.
 It accepts an active picture, polls 8,000 zeros, rejects the final-silence paint
@@ -7883,6 +7889,21 @@ A [later nonshipping follow-up](https://github.com/skyRolly/Anamorph/tree/a26d0a
 ## H4 first-consumption and N2-09 follow-up (2026-11-15)
 
 The [nonshipping history trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/history-step-70bb-results/README.md) observes actual aligned history writes and latency-offset Mix reads after injected invalid dry state. The [independent production trace](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-trace-70bb-results/README.md) establishes N2-09: an extreme finite input causes an interior Enable overflow, aligned-history write/read and self-heal. The 216-case [unpatched secondary search](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/shipping-secondary-search-70bb-results/README.md) did not find the separate dry-source interpolation failure exposed by a diagnostic fallback; this is a bounded negative result. These do not establish a complete H4 policy or change Test 25.
+
+## Conditioned dry self-heal history (N2-04, Test 59 extension)
+
+`AnamorphTests --n204-conditioned-history` runs the same focused checks as the
+full DSP suite. Two production engines compare the unaffected conditioned dry
+response through actual x2/x4/x8 modulation wrapping and through the latency
+stand-in; the test observes the output guard, actual wrapper state and later
+delay reads. Separate injected ring poison and actual non-finite input controls
+require invalid slots to be scrubbed while finite opposite-channel history and
+signed zero survive. A separate delayed second-spike control exercises repeated
+self-healing in both the latency stand-in and actual wrapped paths. The live
+allocation guard is armed around exceptional processing when supported. The [record](../../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md)
+separates the original-clear and unsafe-retention negative controls from
+provisional results, exact-source replay and hosted validation. It does not
+claim an H4 or N2-05 correction.
 
 ## Finite Mix=1 Wet endpoint (N2-06)
 

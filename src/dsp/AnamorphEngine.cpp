@@ -2322,12 +2322,22 @@ void AnamorphEngine::process (juce::AudioBuffer<float>& buffer) noexcept ANAMORP
         haas.reset(); velvet.reset(); chorus.reset();
         if (os2) os2->reset(); if (os4) os4->reset(); if (os8) os8->reset();
         loudness.reset();
-        dryDelayBuffer.clear(); dryAlignDelayBuffer.clear();
+        // The conditioned dry ring is independent of a wet/output failure.
+        // Keep finite history, including the unaffected channel; a bad input may
+        // also have reached this ring, so scrub every non-finite slot before any
+        // later Mix read. The ring is fixed-size and this work replaces the
+        // existing bounded clear on the exceptional recovery path only.
+        for (int i = 0; i < ddSize; ++i)
+        {
+            if (! std::isfinite (ddL[i])) ddL[i] = 0.0f;
+            if (! std::isfinite (ddR[i])) ddR[i] = 0.0f;
+        }
+        dryAlignDelayBuffer.clear();
         // The oversampling latency stand-in is a delay line on the MAIN path and was
         // written further up this very block, so a non-finite sample is already
         // inside it and would be handed back `lat` samples later -- exactly the
-        // re-entry the conditioned dry rings above are cleared to prevent. Contents only, like
-        // them: the write index may keep advancing, since every read now returns 0.
+        // re-entry the aligned dry clear and conditioned-ring scrub prevent. Contents only:
+        // the write index may keep advancing, since every stand-in read now returns 0.
         osCompDelayBuffer.clear();
         // Raw bypass data is independent of this wet-path failure. A consuming
         // block already filled finite scratch, and every future ring read validates

@@ -108,11 +108,11 @@ value-box text).
 
 ## Related code
 - `src/dsp/MultibandWidth.cpp:55-71` (clamp+order); `SoloMonitor.cpp:41-57`; `MonoMaker.h:36-39` (setFrequency clamp)
-- `src/dsp/AnamorphEngine.cpp:2285-2337` (NaN/Inf self-heal)
+- `src/dsp/AnamorphEngine.cpp:2285-2347` (NaN/Inf self-heal)
 - `src/dsp/LevelMeters.h:98-102, 167` (`sanitize`)
 
 Evidence [Verified]:
-- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2285-2337; src/dsp/LevelMeters.h
+- Source: src/dsp/MultibandWidth.cpp:55-71; src/dsp/AnamorphEngine.cpp:2285-2347; src/dsp/LevelMeters.h
 - Tests: testCrossoverAutomationSafe, testMeterRecoversFromNaN, testNoBadSamples,
   testNonFiniteBurstSelfHeals (Test 59), testAHostNanParameterDoesNotLatchTheChain (State test 123),
   testNonFiniteGlideTargetsDoNotLatch (Test 64), testNonFiniteBurstKeepsLevelMatchAudible (Test 65),
@@ -201,3 +201,15 @@ on restored scratch clearing, history clearing, disabled wet scrubbing and remov
 modulation-only wrap activation. The earlier 1,512 / 252 / 140 measurements above
 retain their original pre-review oracle and remain historical evidence. No production
 code, reset order or ADR-0009 behavior changed in this review correction.
+
+## Conditioned dry history after self-heal — N2-04
+
+The D-02 note above records the scope at its own implementation date. The
+separate N2-04 correction preserves valid conditioned dry delay slots when the
+existing processed-output guard fires, while zeroing only non-finite slots
+before later reads. Aligned dry and oversampling-compensation history still
+clear; raw bypass retains D-02's independent validation. The fixed-size scan
+replaces an existing bounded clear on the exceptional path. Prepare and host
+reset semantics, stage order, latency and the accepted decision above do not
+change. The [focused record](../../../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md)
+distinguishes original-clear and unsafe-unconditional-retention controls.
