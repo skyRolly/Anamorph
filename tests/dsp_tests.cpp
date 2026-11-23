@@ -14790,6 +14790,9 @@ static void testBypassExactEndpoints()
 #include "n2_control_tests.h"
 
 #include "n2_endpoint_tests.h"
+#include "n2_conditioned_history_tests.h"
+
+#include "n2_mix_endpoint_tests.h"
 
 #include "n2_drive_endpoint_tests.h"
 
@@ -14809,9 +14812,23 @@ int main (int argc, char* argv[])
     // cannot use anyway.
     std::setvbuf (stdout, nullptr, _IONBF, 0);
 
+    if (argc > 1 && std::strcmp (argv[1], "--n204-conditioned-history") == 0)
+    {
+        testN204ConditionedHistoryRecovery();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
     if (argc > 1 && std::strcmp (argv[1], "--multiband-endpoints") == 0)
     {
         n2_endpoint_tests::test();
+        std::printf ("%d checks, %d failures\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
+
+    if (argc > 1 && std::strcmp (argv[1], "--mix-wet-endpoint") == 0)
+    {
+        n2_mix_endpoint_tests::test();
         std::printf ("%d checks, %d failures\n", checks, failures);
         return failures == 0 ? 0 : 1;
     }
@@ -14929,6 +14946,7 @@ int main (int argc, char* argv[])
     testAlgoResetSurvivesMidFadeRetarget();
     testInertDimModeDoesNotReArmLevelMatch();
     testNonFiniteBurstSelfHeals();
+    testN204ConditionedHistoryRecovery();
     testEngagedWrapCarriesTheReportedLatency();
     testScopeRingHandsTheNewestFramesOldestFirst();
     testHostResetChorusSeedIsScoped();
@@ -14948,6 +14966,7 @@ int main (int argc, char* argv[])
     testCrossfadedControlsDuringOrdinaryDuck();
 
     n2_endpoint_tests::test();
+    n2_mix_endpoint_tests::test();
     n2_drive_endpoint_tests::test();
     testBypassExactEndpoints();
     testBypassFiniteEndpointOverflow();

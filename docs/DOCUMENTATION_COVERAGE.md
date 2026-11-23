@@ -3290,10 +3290,11 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2284-2336` (a re-aim, not a re-anchor — the tool cannot compute it, so
-it is declared in `DELIBERATE_REAIMS` and its aim machine-checked against
+`src/dsp/AnamorphEngine.cpp:2294-2356` (a deliberate re-aim declared in
+`DELIBERATE_REAIMS` and machine-checked against
 `Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
-liveness evidence to name the mechanism the tree actually runs.
+liveness evidence to name the mechanism the tree actually runs. The range shown is
+mapped to current source; at the dated sign-off it ended at line 2327.
 
 **A definition whose signature carried a comma inside template arguments was discarded whole.**
 `_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
@@ -19441,6 +19442,72 @@ not a proof of unreachability. Original evidence and Test 25 remain intact.
 The H4 decision packet now points to the later policy checkpoint, and the dated
 November 13 delivery ledger explicitly labels its PR-state table historical.
 
+## N2-04 conditioned dry self-heal documentation audit — 2026-11-15
+
+The pre-edit drift check found the D-02 implementation summary and graph still
+described unconditional conditioned-history clearing. Updated those live
+statements, added the bounded N2-04 implementation note to ADR-0009, recorded
+the new Test 59 selector and its negative controls in TESTING, and indexed the
+separate evidence record. The original D-02 and numerical audit remain dated
+historical evidence. N2-05 through N2-09 and H4 remain distinct.
+
+The signal-flow meter anchor was re-derived after the exceptional-path insertion; stage order is unchanged.
+
+The N2-04 Test 59 extension now also exercises a delayed second finite spike and repeated self-heal; TESTING and the evidence record distinguish this v6 control from the prior v5 source-bound replay.
+
+The N2-04 branch was rebased onto actual integrated main `230da0e2`; its worklog and changelog cite the resulting implementation identity while preserving the earlier v5/v6 execution scopes.
+The N2-04 record links the separately committed sequential provenance controls and retains the earlier failed concurrent attempt as a distinct verification event.
+
+## Unreleased evidence audit — 2026-11-17
+
+A drift check of all current Unreleased entries found the merged N2-02 and
+N2-03 entries lacked the implementing PR Evidence Sources required by
+CHANGELOG_POLICY rule 2. Added PR #238 and PR #239 respectively; their existing
+test and ADR evidence remains. The independent N2-06 and N2-07 PR entries are
+corrected in their own branches. Historical release records are unchanged.
+
+## N2-06 finite Mix endpoint documentation audit — 2026-11-16
+
+Before editing live descriptions, the drift check found line anchors shifted by
+the proposed Mix-stage code; their symbol targets were re-derived and updated.
+The proposed focused engine regression is described in TESTING; the existing
+Multiband Enable output oracle now models exact Mix=1 Wet selection. The DSP
+algorithm and graph descriptions, ADR-0005 implementation note, current issue
+status and Unreleased changelog describe the same scoped endpoint behavior.
+Interior arithmetic, invalid-operand self-heal, H4 behavior and Test 25 remain
+separate. Historical audit files and measurements are unchanged.
+An initial hosted MSVC build exposed an undeduced friend-return test-helper
+error; the regression now uses the existing explicitly typed access pattern.
+The failed attempt remains recorded separately from new-head validation.
+
+## N2-06 Unreleased evidence — 2026-11-17
+
+The pre-edit audit found the Mix endpoint entry cited tests but omitted an
+implementing Evidence Source and verification marker. Added PR #244 and the
+existing automated verification status; no user-visible scope changed.
+
+## N2-06 wrapped endpoint review — 2026-11-17
+
+The existing wrapped lane checked execution, clock and finiteness but did not
+independently compare the terminal production Mix output. Added an actual x4
+one-band wet-twin comparison and a legacy-expression sensitivity premise;
+TESTING records the selected scope.
+
+
+## N2-06 hosted warning-gate correction — 2026-11-17
+
+Exact head `e7824d8c` exposed a new `-Wshadow` site in the added wrapped test
+under both Clang and GCC LTO. Renamed the test-local input variable without
+changing the oracle or warning baselines. TESTING records the portability and
+warning-gate context; the failed hosted attempt remains separate from new-head
+validation.
+
+## N2-06 oversampler selection audit - 2026-11-22 UTC
+
+TESTING records the direct factor check for both engines in the wrapped
+terminal Mix regression. Equal positive latency and wrap execution are
+checked separately from the actual JUCE oversampling factor.
+
 ## N2-07 Drive endpoint documentation audit — 2026-11-16
 
 Before editing, the current Drive source, graph, accepted ADR, testing and
@@ -19469,3 +19536,26 @@ The extreme interior inputs alone yielded identical bits for the historical
 expression and the reordered weighted sum. The fixture also uses smaller
 finite inputs and checks arithmetic and sensitivity independently on both
 channels. TESTING records the revised interior coverage.
+
+## State 150 scope payload fixture audit
+
+The [Windows scope trace](https://github.com/skyRolly/Anamorph/actions/runs/45087445600/job/137409173103)
+observed at 2026-11-23T00:13:34Z located the changed signaling NaN bit in the
+fixture input on optimized MSVC 19.52. TESTING records byte seeding and the
+new input assertion alongside the existing stereo round-trip assertion.
+
+## N2-06 combined-source documentation audit
+
+The 2026-11-23T12:08:11Z audit reconciled N2-06 with the integrated
+conditioned dry scrub and State 150 fixture. The issue register records the
+N2-04 integration and the finite Mix endpoint. The signal flow and self-heal
+references are anchored to the combined engine. TESTING and the Unreleased
+notes retain the separate corrections and their evidence.
+
+## N2-07 combined-source documentation audit
+
+The 2026-11-23T13:26:24Z audit reconciled the Drive endpoint with the integrated
+conditioned dry, Mix and State 150 corrections. Live signal-flow, recovery
+and Level Match references use the combined engine. TESTING retains the
+independent endpoint regressions and the injected held-envelope premise.
+The Unreleased entries retain their distinct implementing evidence.

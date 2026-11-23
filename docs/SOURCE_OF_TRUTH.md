@@ -230,3 +230,5 @@ implementation evidence for the existing ADR-0004/0005 contract; it supplies no
 new H4, topology, numerical-interior or merge approval.
 
 The [independent H4 recovery follow-up](https://github.com/skyRolly/Anamorph/blob/6982e81bd2c4e6f08bb56a40bc8b86bbb0dc9db6/worklogs/h4-decision-checkpoint-0102/followup/H4_RECOVERY_POLICY_2026-11-15.md) is supporting nonshipping evidence; it neither accepts ADR-0074 nor approves a production recovery policy.
+
+The [N2-04 conditioned-history record](../worklogs/N2_04_CONDITIONED_HISTORY_0.10.2.md) is supporting implementation and regression evidence; its provisional results do not establish final-main integration or release acceptance.

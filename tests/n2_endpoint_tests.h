@@ -113,14 +113,16 @@ static void test()
                     // an output bit comparison alone is NOT the stage oracle.
                     const float ts0=juce::jlimit(0.0f,1.0f,mix*20.0f),ts=ts0*ts0*(3.0f-2.0f*ts0);
                     const float mixedDry=cd+ts*(expectedDry-cd);
-                    const float expected=mixedDry+mix*(expectedWet-mixedDry);
+                    // The Mix=1 boundary now selects finite wet bits; other
+                    // coefficients retain the historical downstream rounding.
+                    const float expected=juce::exactlyEqual(mix,1.0f)?expectedWet:mixedDry+mix*(expectedWet-mixedDry);
                     const float presented=match ? expected*gain : expected;
                     outputBad+=!bits(audio.getSample(ch,i),presented);
                     peak=std::max(peak,std::abs(double(audio.getSample(ch,i))-presented));
                     // Counterfactual uses the old wet expression but the corrected
                     // dry path, then the same downstream rounding and Match gain.
                     const float oldWet=from+b*(to-from);
-                    const float oldMixed=mixedDry+mix*(oldWet-mixedDry);
+                    const float oldMixed=juce::exactlyEqual(mix,1.0f)?oldWet:mixedDry+mix*(oldWet-mixedDry);
                     const float oldPresented=match ? oldMixed*gain : oldMixed;
                     observableLegacy+=(atOne && !bits(presented,oldPresented));
                     if(atOne && !bits(expectedWet,oldWet))

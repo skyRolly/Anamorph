@@ -1,0 +1,77 @@
+# N2-04 — conditioned dry history during self-heal
+
+## Mechanism and focused correction
+
+The original [numerical audit](dsp-numerical-audit-0102/original/REPORT.md)
+showed that a processed-output non-finite cleared otherwise valid conditioned
+dry delay samples in both channels. With a selected nonzero latency, a finite
+left-channel overflow could therefore erase valid subsequent right-channel Mix=0
+audio. This ring and consumer are distinct from D-02's raw Bypass path and H4's
+recursive crossover state. ADR-0009 requires output sanitation and self-heal
+without discarding valid audio.
+
+The focused production change replaces the conditioned ring clear at the
+existing self-heal with a bounded scan: each non-finite slot becomes zero and
+every finite slot retains its bits. The fixed ring is already allocated; the
+scan runs only after the existing final output guard reports a non-finite. Wet
+node, aligned dry and OS compensation resets remain in their existing order.
+Raw bypass, prepare and explicit reset retain their separate semantics. No
+graph, latency, parameter, persistence, smoother or normal-path arithmetic
+changes. This neither prevents invalid conditioned samples before an existing
+self-heal nor corrects N2-05's wet arithmetic at Mix=0.
+
+## Controls and current evidence
+
+The nonshipping [provisional v5 record](https://github.com/skyRolly/Anamorph/tree/a32f9727/worklogs/n2-04-conditioned-history-0102/provisional-v5)
+retains the source patch, test header, hashes and raw streams. On reviewed
+integration `70bbdc22`, its ordinary local GCC 14/JUCE 9.0.5 development build
+passed 109 focused and 5723 full DSP checks. Restoring the original ring clear
+failed 24/109; retaining the ring unconditionally without scanning failed
+6/109. The controls exercise selected x2/x4/x8 latency stand-ins, observed
+actual Chorus/Dimensional wrapping, both channels, natural non-finite input,
+injected ring poison, signed zero and the available allocation guard. The
+setup failure and earlier latency-premise correction are retained there. These
+are provisional development observations, not exact-final-head hosted or
+receipt-controlled results.
+
+The standalone selector `--n204-conditioned-history` is also registered in
+the full DSP suite. Final-main rebasing, exact-source replay, applicable hosted
+validation and owner review remain separate from these provisional results.
+No claim of native DAW, listening, hardware or release acceptance is made.
+
+The preliminary documentation check first reported that this separate clone
+had no `origin/main`, which prevented its release-link ancestry check; fetching
+that ref made the check applicable. The citation check then identified the
+expected line shifts from the self-heal insertion, including the metering tap.
+The anchors were re-derived and the historical sign-off range retained in its
+audit note. The documentation and citation checks passed against rehearsal
+base `ca5c6fc2`. These were documentation/environment findings, not DSP test
+failures; final-base checks remain required.
+
+The expanded v6 development selector adds a finite spike pending at the end of
+a fault block. Its later latency-aligned consumption triggers a second
+self-heal while valid opposite-channel output and the following normal block
+remain intact, both for the stand-in and observed wrapped path. This selector
+passed **125/0** locally; restoring the original clear failed **28/125** and
+unsafe unconditional retention failed **6/125**. These v6 runs are local
+development controls; the fresh `623d3c33` replay above used the earlier v5
+selector and must not be relabeled as a v6 execution. Full final-head and
+receipt-controlled v6 validation remain separate.
+
+## Actual integrated baseline
+
+The separate correction branch is based on actual integrated main
+`230da0e2b0b81422f7e3964eea2833c48266a963`, whose tree matches the
+previously tested rehearsal. Production change commit
+`d1e627f5e7921f0d5a0834e5fbc0b83eae9ceb43` and its later v6 regression
+commit preserve the source/test bytes of the scoped preparation. The
+[source-bound v5 DSP/State replay](https://github.com/skyRolly/Anamorph/tree/dd1556b3b995384cc93b341a3a4cdeaf66fd0b8b/worklogs/n2-04-conditioned-history-0102/provisional-v5/prep-623-results)
+and [v6 repeated-recovery development logs](https://github.com/skyRolly/Anamorph/tree/96d33bec/worklogs/n2-04-conditioned-history-0102/provisional-v6)
+retain their original source identities. Exact-head v6 replay, hosted validation
+and separate owner review are not implied by those earlier executions.
+
+The separately [receipt-controlled v5 controls](https://github.com/skyRolly/Anamorph/tree/73b75072/worklogs/n2-04-conditioned-history-0102/provisional-v5/serial-controls)
+passed 109/0 and detected the original-clear and unsafe-retention mutations at
+24/109 and 6/109 failures. A prior concurrent-attempt index-lock failure and
+its overlapping result remain recorded separately. The v6 local full DSP run
+passed 5739/0; it is not an exact-head hosted or source-bound v6 replay.
