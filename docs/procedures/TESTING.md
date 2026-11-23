@@ -6765,6 +6765,12 @@ The citation self-test requires both recognized claims and exercises wrong targe
 symbol and a same-path addition. The gloss check verifies the named source text; stage order
 still requires source review and the corresponding DSP tests.
 
+The self-test also creates a temporary local Git baseline from the tracked source targets and
+opted-in documents, then runs the actual `--check` CLI on a clean fixture and on each invalid
+ADR-0006 symbol gloss. It checks the exit status and named diagnostic, so disconnecting the
+CLI verifier fails even while helper tests still pass. The Mono Maker enable fixture accepts
+whitespace variations and requires exactly one matching source condition.
+
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
 `:71` — is declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line

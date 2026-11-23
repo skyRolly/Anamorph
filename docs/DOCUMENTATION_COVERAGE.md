@@ -19588,3 +19588,15 @@ gloss and the repository map still described the previous opt-in set. The
 self-test now requires both call-site claims while allowing other valid claims;
 it rejects a missing required claim or an invalid additional gloss. The map
 describes the current checker scope.
+
+## Citation CLI and fixture follow-up - 2026-11-23T19:37:19Z
+
+The pre-edit review found that helper-level gloss tests did not exercise the
+CLI wiring, and the additional-gloss fixture relied on exact C++ spacing with
+a line-1 fallback. The citation self-test now runs the actual CLI against a
+temporary local Git baseline and checks both its exit status and the named
+invalid-symbol diagnostic for each ADR-0006 call. A disconnected CLI verifier
+returned success on the invalid citation while its helper still detected the
+problem; the new self-test rejected that mutation. The source-bound condition
+fixture accepts whitespace variations and reports zero or multiple matches.
+TESTING describes the distinction between these controls and source review.

@@ -58,8 +58,11 @@
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 # The sources whose line anchors are worth tracking, spelled EXACTLY as a
 # citation must spell them to be checked. A file absent here is not checked; a
@@ -1911,9 +1914,8 @@ def self_test():
     that wraps a line carrying the sibling product's range. Every one of those is
     a case below, in the direction it failed.
 
-    All of it runs on pure functions with synthetic input — no repository, no
-    commits, no `git` — which is what lets this run in the same job immediately
-    before the check it verifies, as TESTING_POLICY rule 4 requires.
+    The function tests use synthetic input. The CLI integration controls create
+    a temporary local Git baseline, so they need no existing revision or network.
     """
     failures = checked = 0
 
@@ -2509,13 +2511,29 @@ def self_test():
     check("an added citation cannot exempt an earlier wrong claim",
           [p[2] for p in glossed(added)], ["monoMaker.process"])
     check("a correct added same-path citation stays valid", glossed(f"{both}, {engine}:2"), [])
-    condition_line = next((n for n, line in enumerate(read(engine).splitlines(), 1)
-                           if "if (p.monoMakerEnable)" in line), 1)
-    extra_gloss = f"{engine}:{condition_line} (`p.monoMakerEnable`)"
-    with_extra = f"{both}, {extra_gloss}"
-    check("an additional gloss retains the required call-site claims",
-          required.issubset({gloss for _whole, gloss in engine_claims(with_extra)}), True)
-    check("an additional valid same-path gloss passes", glossed(with_extra), [])
+    def condition_lines(text):
+        pattern = r"\s*if\s*\(\s*p\.monoMakerEnable\s*\)\s*(?://.*)?"
+        return [n for n, line in enumerate(text.splitlines(), 1)
+                if re.fullmatch(pattern, line)]
+
+    check("the Mono Maker fixture accepts ordinary spacing",
+          condition_lines("    if (p.monoMakerEnable)"), [1])
+    check("the Mono Maker fixture accepts additional spacing",
+          condition_lines("    if  ( p.monoMakerEnable )"), [1])
+    check("the Mono Maker fixture accepts tabs",
+          condition_lines("\tif\t(p.monoMakerEnable)"), [1])
+    check("the Mono Maker fixture reports no match",
+          condition_lines("if (p.otherEnable)"), [])
+    check("the Mono Maker fixture reports multiple matches",
+          condition_lines("if (p.monoMakerEnable)\nif (p.monoMakerEnable)"), [1, 2])
+    matches = condition_lines(read(engine))
+    check("Mono Maker enable fixture has exactly one match", len(matches), 1)
+    if len(matches) == 1:
+        extra_gloss = f"{engine}:{matches[0]} (`p.monoMakerEnable`)"
+        with_extra = f"{both}, {extra_gloss}"
+        check("an additional gloss retains the required call-site claims",
+              required.issubset({gloss for _whole, gloss in engine_claims(with_extra)}), True)
+        check("an additional valid same-path gloss passes", glossed(with_extra), [])
 
     # A LISTED DOCUMENT THAT IS GONE is a finding, not a traceback. `read()`
     # returns contents or raises, so this branch is the only thing standing
@@ -2529,6 +2547,69 @@ def self_test():
         globals()["GLOSS_CHECKED_DOCS"] = saved_docs
     check("...and the document list is restored afterwards",
           "docs/NO_SUCH_DOC.md" in GLOSS_CHECKED_DOCS, False)
+
+    # Exercise the actual --check entry point on a local, synthetic base. A
+    # helper-only test cannot catch main() disconnecting the gloss verifier.
+    try:
+        with tempfile.TemporaryDirectory(prefix="anamorph-citations-") as temporary:
+            fixture = Path(temporary)
+            for name in sorted(set(TRACKED) | set(GLOSS_CHECKED_DOCS)):
+                source = Path(name)
+                if source.is_file():
+                    target = fixture / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+
+            environment = {key: value for key, value in os.environ.items()
+                           if not key.startswith("GIT_")}
+            environment["GIT_CONFIG_NOSYSTEM"] = "1"
+            environment["GIT_CONFIG_GLOBAL"] = os.devnull
+
+            def fixture_git(*arguments):
+                return subprocess.run(["git", *arguments], cwd=fixture, env=environment,
+                                      capture_output=True, text=True, check=True).stdout.strip()
+
+            fixture_git("init", "-q")
+            fixture_git("add", "-A")
+            fixture_git("-c", "user.name=Citation Test",
+                        "-c", "user.email=citation-test@example.invalid",
+                        "-c", "commit.gpgsign=false", "commit", "--quiet",
+                        "--no-verify", "-m", "Synthetic citation baseline")
+            base = fixture_git("rev-parse", "HEAD")
+            command = [sys.executable, str(Path(__file__).resolve()), "--check", "--base", base]
+
+            def fixture_check():
+                return subprocess.run(command, cwd=fixture, env=environment,
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="replace")
+
+            clean = fixture_check()
+            check("CLI accepts its clean synthetic baseline", clean.returncode, 0)
+            check("CLI clean baseline reaches the drift comparison",
+                  "anchor(s) still point at the same text" in clean.stdout, True)
+            cli_passed = (clean.returncode == 0 and
+                          "anchor(s) still point at the same text" in clean.stdout)
+            fixture_adr = fixture / adr
+            original = fixture_adr.read_text(encoding="utf-8")
+            for symbol, anchor in (("monoMaker.process", mono), ("soloMonitor.process", solo)):
+                old = f"(`{symbol}`)"
+                missing = symbol + ".absentForCliControl"
+                check(f"CLI fixture contains the {symbol} gloss", old in original, True)
+                if old not in original:
+                    cli_passed = False
+                    continue
+                fixture_adr.write_text(original.replace(old, f"(`{missing}`)", 1),
+                                       encoding="utf-8")
+                result = fixture_check()
+                diagnostic = f"::error::{adr}: the citation {anchor} names '{missing}'"
+                check(f"CLI rejects the invalid {symbol} gloss", result.returncode, 2)
+                check(f"CLI identifies the invalid {symbol} gloss",
+                      diagnostic in result.stderr, True)
+                cli_passed = cli_passed and result.returncode == 2 and diagnostic in result.stderr
+            if cli_passed:
+                print("check-citations: CLI gloss controls passed (one clean, two rejected).")
+    except (OSError, subprocess.CalledProcessError) as error:
+        check(f"CLI integration fixture setup succeeded ({error})", False, True)
 
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
     # Section 8c gave this tool a check on its own declarations. It was wired
