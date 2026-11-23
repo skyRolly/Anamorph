@@ -1,5 +1,20 @@
 # TESTING.md
 
+## Drive finite endpoint (N2-07)
+
+`AnamorphTests --drive-endpoint` selects the same actual-engine regression as
+full DSP. A one-band full-wet case isolates Drive from Mix endpoint arithmetic;
+positive and negative extreme inputs on both channels are compared to an independent
+saturation reference. Right-channel terminal, wrapped and held-envelope observations
+independently exercise the separate production calls. A settled twin, copied smoother clocks and discriminating in-block
+terminal samples exercise the unwrapped ramp. A selected x4 wrap has nonzero
+latency, and a deliberately injected OS fade exercises the held-envelope path;
+that injection does not establish host reachability. The interior case compares
+each channel against the historical float expression and requires samples
+that distinguish it from the reordered weighted sum. Invalid-input self-heal
+and subsequent valid processing remain checked.
+This is headless numerical evidence, not a listening or native-DAW result.
+
 ## Raw bypass retention during wet self-heal (D-02, Test 59 extension)
 
 `AnamorphTests --bypass-selfheal-probe` selects the same Test 59 extension run by

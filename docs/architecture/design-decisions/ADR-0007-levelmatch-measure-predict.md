@@ -277,7 +277,7 @@ ordinary (the toggle itself) — the applied gain `matchGainSmooth` takes one of
   starts from the value it publishes, converged or still converging on an earlier edit (*Note of
   2026-09-25, stale engage*, below): right after
   that block's `loudness.process` the smoother is landed, current and target, on the target the
-  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:2152`). This is an **alignment
+  level-match stage has just computed (`src/dsp/AnamorphEngine.cpp:2161`). This is an **alignment
   of an existing result, not a new measurement**: nothing in `LoudnessMatch` is reset, re-armed,
   written or read differently. Case A holds only when all of these do:
   1. nothing the measurement reads differs between the state heard before the switch and the state
@@ -532,7 +532,7 @@ Gate: a text correction to this Accepted ADR, flagged in the PR #156 body and th
 compatibility trigger (no parameter, schema, thread, order or latency change — the write is on the
 prepare path).
 
-Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1434` (`measChangedAtBottom`, one
+Related code (this amendment): `src/dsp/AnamorphEngine.cpp:1443` (`measChangedAtBottom`, one
 answer for the Case-A landing and the injection re-arm), `:705` (the re-arm, since the A/B provenance
 amendment in `adoptRememberedMatch`, which the two consumers call at `:1407-1414` and `:1445-1452`), `:63` (`keepMatch`), `:77` and `:167` (the kept matcher skips
 `loudness.prepare` and takes `softReset`), `:291` (`reset (everything)`), `:175-176` (the kept result
@@ -1184,7 +1184,7 @@ Related code (this revision): `src/dsp/LoudnessMatch.h` (`Evidence`, `getEvidenc
 ## Note, 2026-09-25 — a gain-only engage lands on the published value, current or not (Devin review: "Level Match engages on stale compensation"; "stale engage")
 
 Devin's review of `1c22d51` (PR #156) found *"Level Match engages on stale compensation"* at
-`src/dsp/AnamorphEngine.cpp:1447-1448`. The sequence it gives:
+`src/dsp/AnamorphEngine.cpp:1456-1457`. The sequence it gives:
 1. With Level Match off, a live edit to something the measurement reads leaves the result not current
    (`inputsChanged`; the Amendment of 2026-09-25, live edits).
 2. Level Match is turned on before the measure has caught up.
@@ -1366,7 +1366,7 @@ against the currency the matcher now reports.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, in place: the decision it records (Q4) stands |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change; no behaviour change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1434-1448` (the bottom's answer and the landing
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1443-1457` (the bottom's answer and the landing
 predicate), `:1991-1992` (the landing), `:2025-2026` (the edge snap); `src/dsp/LoudnessMatch.h:94-103`
 (`inputsChanged`, `isResultCurrent`). Tests: Test 71, State test 135.
 
@@ -1485,7 +1485,7 @@ flag is audio-thread state, written in `process()` beside the report it retires.
 | 3 | if the change is a decision, an ADR is added/updated | this Note, and the three in-place clarifications it lists |
 | 4 | compatibility-affecting changes additionally run `RELEASE_COMPATIBILITY_CHECKLIST.md` | **not triggered**: no parameter, schema, thread, DSP-order or latency change |
 
-Related code (this note): `src/dsp/AnamorphEngine.cpp:1433-1441` (the bottom's report and the retirement),
+Related code (this note): `src/dsp/AnamorphEngine.cpp:1442-1450` (the bottom's report and the retirement),
 `:61-65` (`prepare()`'s guard), `:237-244` (`reset()` completing a duck), `:656-659` (the A/B record),
 `:767-771` and `:878-882` (the producers); `src/dsp/AnamorphEngine.h:392-397` (the flag). Tests: Test 72,
 State test 136.
@@ -1642,7 +1642,7 @@ the consumers `src/dsp/AnamorphEngine.h:130-138` (the prime) and `src/dsp/Anamor
   un-measure), `:200-226` (measure/hold), `:124-133` (`softReset`: the analysis only), `:65-80` (`reset`:
   both halves), `:230-286` (the result's currency, its confirmation and the post-change evidence; the
   amendments of 2026-09-25 and the revision of 2026-09-26), `:82-95` (`restoreUnmeasured`)
-- `src/dsp/AnamorphEngine.cpp:2017-2018` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
+- `src/dsp/AnamorphEngine.cpp:2026-2027` (A(dry) reference), `:1986-1987` (the measurement), `:2025-2026`
   (silence-edge snap), `:611-692` (the A/B record: request, forget, capture, restore)
 - `src/PluginProcessor.cpp:507` (`applyAutoGain`)
 

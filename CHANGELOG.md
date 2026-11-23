@@ -36,6 +36,11 @@ including in entries written before 0.9.9 gave it that name.
   Evidence: PR #244; N2-06 actual-engine endpoint and Multiband Enable
   regression controls. [Verified]
 
+- **Drive retains its computed saturation at the exact fully blended endpoint.**
+  The existing interior blend, smoothing, non-finite recovery and oversampling
+  timing are preserved. Evidence: PR #245; N2-07 actual-engine Drive endpoint
+  regression; ADR-0003. [Verified]
+
 - **Bypass and Multiband Enable automation now responds during ordinary parameter-switch fades.**
   Short return pulses reach their independent crossfades; preset/A-B/Undo bulk
   destinations still wait for the complete-state duck bottom.

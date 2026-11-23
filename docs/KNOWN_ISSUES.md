@@ -11,7 +11,7 @@ crossover state at full wet, producing a measured low-frequency reconstruction
 transient at Mix re-entry. The Test 25 RMS criterion does not establish a universal
 phase-reconstruction guarantee. [Decision packet and optional failing oracle](../worklogs/H4_DRY_RECONSTRUCTION_0.10.2.md).
 The original audit confirmed N2-05 through N2-07 on its reviewed source.
-N2-05 and N2-07 remain open. [Original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md).
+N2-05 remains open. [Original evidence and follow-ups](../worklogs/dsp-numerical-audit-0102/original/REPORT.md).
 
 N2-04 (P3) was integrated through PR #243. The existing self-heal preserves
 finite conditioned dry history and sanitizes invalid ring slots.
@@ -20,6 +20,11 @@ finite conditioned dry history and sanitizes invalid ring slots.
 N2-06 (P3) is addressed in this source by PR #244. At exact Mix=1 with
 finite operands, the engine selects Wet directly and retains the historical
 interior and invalid-operand arithmetic.
+
+N2-07 (P3) is addressed in this source by PR #245. The Drive stage
+preserves finite saturation at blend=1 in its settled, smoothing and
+held-envelope paths. Interior coefficients and invalid operands retain
+the historical expression. See ADR-0003 and the focused Drive regression.
 
 N2-08 (P3 review assessment): after an extreme but finite input at a high
 crossover frequency, a finite wet LR4 state can overflow an intermediate
@@ -214,7 +219,7 @@ is deferred to the silent duck bottom, where `mbStructuralChange` (which still i
 the fade-in instead of staying warm, partially defeating the 0.8.6 warm-bank design for that
 specific case. The reset is **masked by the duck (inaudible)**, so there is no user-visible defect;
 a stand-alone `mbEnable` toggle (the common case) is unaffected and stays warm.
-- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1451 (`mbStructuralChange` includes
+- **Evidence [Verified]:** src/dsp/AnamorphEngine.cpp:1460 (`mbStructuralChange` includes
   `pendingP.mbEnable != p.mbEnable`), :743 (reset on it). Raised in Devin review of PR #50
   (unresolved thread). See FUTURE_RISKS / ADR-0004 (warm-bank intent).
 - **Possible resolution:** remove `mbEnable` from `mbStructuralChange` so a concurrent toggle fades
