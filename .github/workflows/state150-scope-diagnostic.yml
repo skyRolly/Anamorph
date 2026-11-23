@@ -1,0 +1,27 @@
+name: State 150 Scope Diagnostic
+
+on:
+  push:
+    branches: [codex/state-150-diagnostics]
+
+permissions:
+  contents: read
+
+jobs:
+  scope-bit-trace:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trace ScopeBuffer payloads with installed MSVC toolsets
+        shell: pwsh
+        run: ./tests/experiments/state150_scope_bits.ps1
+      - name: Retain trace, compiler output, and assembly
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: state150-scope-bits-${{ github.sha }}
+          path: |
+            state150-results/**/*.txt
+            state150-results/**/*.asm
+          if-no-files-found: error

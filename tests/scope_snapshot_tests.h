@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gui/ScopeSnapshotCache.h"
+#include <cstring>
 #include <tuple>
 
 namespace anamorph
@@ -19,6 +20,8 @@ struct ScopeBufferTestAccess
     { return ring.slots[p & ScopeBuffer::mask].tag.load (std::memory_order_acquire); }
     static void tag (ScopeBuffer& ring, std::uint64_t p, std::uint64_t value)
     { ring.slots[p & ScopeBuffer::mask].tag.store (value, std::memory_order_release); }
+    static std::uint64_t payload (const ScopeBuffer& ring, std::uint64_t p)
+    { return ring.slots[p & ScopeBuffer::mask].stereo.load (std::memory_order_acquire); }
 };
 }
 
@@ -46,6 +49,18 @@ struct ScopeVisualTestAccess
     static auto solo (const SpectrumImager& view, int band) { return view.soloBox (band); }
     static void ageSoloPress (SpectrumImager& view) { view.soloPressMs -= 300u; }
 };
+}
+
+#if defined(_MSC_VER)
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+static std::uint32_t scopeDiagnosticStorageBits (const float& sample)
+{
+    std::uint32_t word;
+    std::memcpy (&word, &sample, sizeof word);
+    return word;
 }
 
 static void testScopeSnapshotPublication()
@@ -134,12 +149,35 @@ static void testScopeSnapshotPublication()
         0x00800000u, 0x7f800000u, 0x7fc12345u, 0x7f812345u };
     for (std::size_t i = 0; i < bits.size(); ++i)
     { l[i] = std::bit_cast<float> (bits[i]); r[i] = std::bit_cast<float> (bits[i] ^ 0x80000000u); }
+    std::array<std::uint32_t, bits.size()> preL {}, preR {};
+    for (std::size_t i = 0; i < bits.size(); ++i)
+    {
+        preL[i] = scopeDiagnosticStorageBits (l[i]);
+        preR[i] = scopeDiagnosticStorageBits (r[i]);
+    }
+    const auto packedStart = ring->writeCount();
     ring->pushBlock (l.data(), r.data(), static_cast<int> (bits.size()));
     read = ring->readLatestSnapshot (outL.data(), outR.data(), static_cast<int> (bits.size()));
     bool preserved = read.valid;
     for (std::size_t i = 0; i < bits.size(); ++i)
         preserved = preserved && std::bit_cast<std::uint32_t> (outL[i]) == bits[i]
             && std::bit_cast<std::uint32_t> (outR[i]) == (bits[i] ^ 0x80000000u);
+    for (std::size_t i = 0; i < bits.size(); ++i)
+    {
+        const auto packed = Access::payload (*ring, packedStart + i);
+        const std::uint32_t expected[] { bits[i], bits[i] ^ 0x80000000u };
+        const std::uint32_t beforePack[] { preL[i], preR[i] };
+        const std::uint32_t decoded[] { static_cast<std::uint32_t> (packed), static_cast<std::uint32_t> (packed >> 32) };
+        const std::uint32_t returned[] { scopeDiagnosticStorageBits (outL[i]), scopeDiagnosticStorageBits (outR[i]) };
+        const std::uint32_t observed[] { std::bit_cast<std::uint32_t> (outL[i]), std::bit_cast<std::uint32_t> (outR[i]) };
+        for (std::size_t channel = 0; channel < 2; ++channel)
+            std::printf ("  state150 sample=%zu channel=%c input=0x%08x prepack=0x%08x atomic=0x%016llx "
+                         "decoded=0x%08x returned=0x%08x observed=0x%08x xor=0x%08x\n",
+                i, channel == 0 ? 'L' : 'R', static_cast<unsigned> (expected[channel]),
+                static_cast<unsigned> (beforePack[channel]), static_cast<unsigned long long> (packed),
+                static_cast<unsigned> (decoded[channel]), static_cast<unsigned> (returned[channel]),
+                static_cast<unsigned> (observed[channel]), static_cast<unsigned> (expected[channel] ^ observed[channel]));
+    }
     check (preserved, "scope: stereo packing preserves zero/subnormal/Inf/NaN payload bits");
 
     // Prepare/reset must leave the display ring's lifetime/count intact.
