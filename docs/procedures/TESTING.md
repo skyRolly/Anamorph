@@ -6790,6 +6790,10 @@ payloads and working documents, Unicode path identity and a later drifted docume
 real CLI. A new document has no drift baseline, but its text must still be valid UTF-8.
 Restoring shared text-mode capture must fail these controls, even when the underlying Git
 output is valid.
+For source files containing lone CR line endings, the checker maps normalized lines using
+Git's no-index diff; ordinary LF and CRLF sources keep the existing repository diff path.
+The CLI fixture checks drift, repair and a clean recheck, and rejects failed or malformed
+normalized diff results. A lone-CR document keeps its text and unrelated citations.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and

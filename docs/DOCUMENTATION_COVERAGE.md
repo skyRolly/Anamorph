@@ -19653,3 +19653,14 @@ and exited 0. The checker now reads every tracked working document strictly
 before that skip. A real CLI control rejects the malformed new document while
 retaining normal handling for valid additions. The extended self-test passed
 445 cases on Python 3.10.22 and 3.12.14, including twelve Git stream controls.
+
+## Lone-CR source mapping audit - 2026-11-24T23:12:37Z
+
+The pre-edit disposable source used lone CR line endings and inserted a line
+above a citation. The checker detected drift but mapped line 10 to line 10;
+`--fix` exited 0 without repairing it and the following `--check` still failed.
+Git counts LF-delimited physical lines, while the checker reads universal
+newlines. The targeted path now maps normalized source lines with Git's
+no-index diff when either source contains a lone CR. A disposable check maps
+line 10 to 11, repairs it, and passes the next check while preserving a Unicode
+diagram and an unrelated citation. Ordinary LF and CRLF mapping is unchanged.

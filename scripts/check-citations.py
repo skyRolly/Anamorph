@@ -1704,10 +1704,15 @@ def git_text(*arguments):
     return decode_git_text(git_bytes(git_process(*arguments)))
 
 
-def git_show(ref, path):
+def has_bare_cr(payload):
+    return b"\r" in payload.replace(b"\r\n", b"")
+
+
+def git_show(ref, path, *, with_newline_kind=False):
     r = git_process("show", f"{ref}:{path}")
     if r.returncode == 0:
-        return decode_git_text(r.stdout).split("\n")
+        lines = decode_git_text(r.stdout).split("\n")
+        return (lines, has_bare_cr(r.stdout)) if with_newline_kind else lines
     # A newly added path has no baseline. Do not mistake a bad revision or a
     # failed read of an existing path for that normal case.
     paths = git_bytes(git_process("ls-tree", "-z", "--full-tree", "--name-only",
@@ -1864,6 +1869,27 @@ def build_line_map(base, path):
     return line_map_from_diff(diff)
 
 
+def normalized_line_map(old_lines, new_lines):
+    """Use Git's hunk mapping on universal-newline text for bare-CR files."""
+    with tempfile.TemporaryDirectory(prefix="anamorph-citation-lines-") as temporary:
+        old = Path(temporary) / "old"
+        new = Path(temporary) / "new"
+        old.write_bytes("\n".join(old_lines).encode("utf-8"))
+        new.write_bytes("\n".join(new_lines).encode("utf-8"))
+        result = git_process("diff", "--no-index", "--no-ext-diff", "--no-color",
+                             "--text", "-U0", "--", str(old), str(new))
+        # Unlike the repository diff, --no-index returns 1 for a real diff.
+        if result.returncode not in (0, 1):
+            git_bytes(result)
+        diff = decode_git_text(result.stdout)
+        if result.returncode == 1 and not re.search(r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@", diff, re.M):
+            diagnostic = result.stderr.decode("utf-8", errors="backslashreplace")
+            raise subprocess.CalledProcessError(result.returncode, result.args,
+                                                output=result.stdout,
+                                                stderr=diagnostic or "normalized diff has no hunks")
+        return line_map_from_diff(diff)
+
+
 # `worklogs/` is deliberately OUT of scope. Those files are research records
 # about the SIBLING product, and they cite it both fully qualified (an absolute
 # path into that checkout, `…/src/PluginEditor.cpp:797-800`) and, in the same
@@ -1971,6 +1997,16 @@ def self_test():
           decode_git_text(b"a\r\nb\rc\n"), "a\nb\nc\n")
     check("Git UTF-8 text retains a final empty line",
           decode_git_text(b"a\r\n").split("\n"), ["a", ""])
+    check("bare CR detection ignores CRLF", has_bare_cr(b"a\r\nb\n"), False)
+    check("bare CR detection finds mixed line endings", has_bare_cr(b"a\r\nb\rc\n"), True)
+    normalized_map = normalized_line_map(["a", "b", "c", ""], ["new", "a", "b", "c", ""])
+    check("normalized Git diff maps an insertion", normalized_map(2), 3)
+    check("normalized Git diff retains the final empty line", normalized_map(4), 5)
+    removed_map = normalized_line_map(["a", "b", "c", ""], ["a", "c", ""])
+    check("normalized Git diff marks a removed line unmappable", removed_map(2), None)
+    check("normalized Git diff maps after a deletion", removed_map(3), 2)
+    unchanged_map = normalized_line_map(["a", "b", ""], ["a", "b", ""])
+    check("normalized Git diff preserves identical lines", unchanged_map(2), 2)
     try:
         decode_git_text(b"\xff")
     except UnicodeDecodeError:
@@ -2708,6 +2744,12 @@ class FixturePopen(_original_popen):
                 status = 42
             elif operation == 'diff' and fault == 'diff-failure':
                 status = 42
+            elif operation == 'diff' and fault == 'normalized-diff-failure' and '--no-index' in args:
+                status = 42
+            elif operation == 'diff' and fault == 'normalized-diff-no-hunks' and '--no-index' in args:
+                status = 1
+            elif operation == 'diff' and fault == 'normalized-diff-malformed' and '--no-index' in args:
+                status, stdout, stderr = 0, b'\xff', b''
             elif operation == 'ls-files' and fault == 'files-failure':
                 status = 42
             elif architecture and fault == 'malformed-success':
@@ -2914,6 +2956,8 @@ subprocess.Popen = FixturePopen
                     "new-ascii": "show", "new-localized": "show", "existing-show": "show",
                     "tree-failure": "ls-tree", "diff-failure": "diff", "files-failure": "ls-files",
                     "success-warning": "show", "malformed-success": "show",
+                    "normalized-diff-failure": "diff", "normalized-diff-no-hunks": "diff",
+                    "normalized-diff-malformed": "diff",
                 }
                 if label in operations:
                     observed = trace.read_text(encoding="ascii").splitlines() if trace.exists() else []
@@ -2943,6 +2987,38 @@ subprocess.Popen = FixturePopen
             fault_check("new-localized", 1, "docs/z-citation-drift.md")
             drift_doc.write_text(drift_original, encoding="utf-8")
             print("check-citations: Git stream controls executed (12 CLI cases).")
+
+            # Git counts LF-delimited physical lines; read() also accepts lone
+            # CR. Exercise an actual repair when those two line counts differ.
+            scope = fixture / "src/dsp/ScopeBuffer.h"
+            scope_cr = scope.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r")
+            scope.write_bytes(scope_cr)
+            cr_doc = fixture / "docs/CR_LINE_FIXTURE.md"
+            cr_doc.write_bytes("Diagram \u2502\rSource: src/dsp/ScopeBuffer.h:10.\rEnd\r".encode("utf-8"))
+            fixture_git("add", "src/dsp/ScopeBuffer.h", "docs/CR_LINE_FIXTURE.md")
+            fixture_git("-c", "user.name=Citation Test", "-c", "user.email=citation-test@example.invalid",
+                        "-c", "commit.gpgsign=false", "commit", "--quiet", "--no-verify",
+                        "-m", "Synthetic CR-only baseline")
+            cr_base = fixture_git("rev-parse", "HEAD")
+            scope.write_bytes(b"// inserted CR line\r" + scope_cr)
+            cr_check = fixture_check(locale_env, cr_base)
+            check("CLI lone-CR source detects drift", cr_check.returncode, 1)
+            check("CLI lone-CR source maps the new line",
+                  "src/dsp/ScopeBuffer.h:10 -> src/dsp/ScopeBuffer.h:11" in cr_check.stdout, True)
+            cr_fix = subprocess.run([sys.executable, str(Path(__file__).resolve()),
+                                     "--fix", "--base", cr_base], cwd=fixture, env=locale_env,
+                                    capture_output=True, text=True, encoding="utf-8", errors="strict")
+            check("CLI lone-CR source repair exits successfully", cr_fix.returncode, 0)
+            check("CLI lone-CR repair preserves document content and updates the anchor",
+                  cr_doc.read_text(encoding="utf-8"), "Diagram \u2502\nSource: src/dsp/ScopeBuffer.h:11.\nEnd\n")
+            cr_after = fixture_check(locale_env, cr_base)
+            check("CLI lone-CR source passes after repair", cr_after.returncode, 0)
+            check("CLI lone-CR repair reaches drift comparison",
+                  "anchor(s) still point at the same text" in cr_after.stdout, True)
+            fault_check("normalized-diff-failure", 2, r"Git command failed (42): erro localizado \xe3", cr_base)
+            fault_check("normalized-diff-no-hunks", 2, r"Git command failed (1): erro localizado \xe3", cr_base)
+            fault_check("normalized-diff-malformed", 2, "invalid UTF-8 repository or Git text", cr_base)
+            print("check-citations: lone-CR source repair controls executed.")
     except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         check(f"CLI integration fixture setup succeeded ({error})", False, True)
 
@@ -3660,23 +3736,28 @@ def main():
         print(f"check-citations: note — {path}:{line} is a versioned line whose VALUE is "
               f"watched by {len(watchers)} glossed citation(s): {where}")
 
-    base_src, now_src = {}, {}
+    base_src, now_src, normalized_sources = {}, {}, set()
     for path in TRACKED:
         if not os.path.exists(path):
             continue
-        b = git_show(args.base, path)
+        b = git_show(args.base, path, with_newline_kind=True)
         if b is None:
             print(f"check-citations: {path} does not exist at {args.base}; skipping",
                   file=sys.stderr)
             continue
-        base_src[path] = b
-        now_src[path] = read(path).split("\n")
+        base_src[path], baseline_has_cr = b
+        with open(filesystem_path(path), "rb") as source:
+            current_bytes = source.read()
+        now_src[path] = decode_git_text(current_bytes).split("\n")
+        if baseline_has_cr or has_bare_cr(current_bytes):
+            normalized_sources.add(path)
 
     if not base_src:
         print(f"check-citations: nothing to check against {args.base}", file=sys.stderr)
         return 2
 
-    maps = {p: build_line_map(args.base, p) for p in base_src}
+    maps = {p: (normalized_line_map(base_src[p], now_src[p]) if p in normalized_sources
+                else build_line_map(args.base, p)) for p in base_src}
 
     total = drifted = fixable = unmappable = unchecked = withheld = 0
     used_reaims = set()
