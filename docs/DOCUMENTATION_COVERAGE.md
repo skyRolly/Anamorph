@@ -19644,3 +19644,12 @@ only implicit text subprocesses and measures the actual decoder. The candidate
 self-test passed 443 cases on each interpreter, including the forced fallback,
 eight clean CLI fixtures, sixteen rejected glosses and eleven Git stream
 controls. These controls do not establish native Windows locale behavior.
+
+## New document decoding audit - 2026-11-24T22:57:00Z
+
+A separately staged new document containing byte `0xff` exposed an additional
+gap: the earlier checker skipped its working text after finding no baseline,
+and exited 0. The checker now reads every tracked working document strictly
+before that skip. A real CLI control rejects the malformed new document while
+retaining normal handling for valid additions. The extended self-test passed
+445 cases on Python 3.10.22 and 3.12.14, including twelve Git stream controls.

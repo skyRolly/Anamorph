@@ -2933,10 +2933,16 @@ subprocess.Popen = FixturePopen
             fixture_adr.write_bytes(original.encode("utf-8") + b"\xff")
             fault_check("malformed-working", 2, "invalid UTF-8 repository or Git text")
             fixture_adr.write_text(original, encoding="utf-8")
+            new_doc_path = os.path.join(os.fsencode(fixture), new_doc.encode("utf-8"))
+            with open(new_doc_path, "wb") as output:
+                output.write(b"A new invalid document.\xff\n")
+            fault_check("malformed-new-working", 2, "invalid UTF-8 repository or Git text")
+            with open(new_doc_path, "wb") as output:
+                output.write(b"A new document.\n")
             drift_doc.write_text(f"Source: {engine}:1\n", encoding="utf-8")
             fault_check("new-localized", 1, "docs/z-citation-drift.md")
             drift_doc.write_text(drift_original, encoding="utf-8")
-            print("check-citations: Git stream controls executed (11 CLI cases).")
+            print("check-citations: Git stream controls executed (12 CLI cases).")
     except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         check(f"CLI integration fixture setup succeeded ({error})", False, True)
 
@@ -3676,12 +3682,14 @@ def main():
     used_reaims = set()
     base_doc_cites = {}                # doc -> the citation spellings the BASE carries
     for doc in doc_files():
+        # New documents have no drift baseline, but they must still satisfy the
+        # same strict UTF-8 contract as documents already present in the base.
+        text = read(doc)
         base_lines = git_show(args.base, doc)
         if base_lines is None:
             continue                       # new document: nothing to drift from
         old_cites = citations("\n".join(base_lines))
         base_doc_cites[doc] = {c[0] for c in old_cites}
-        text = read(doc)
         cur_cites = citations(text)
 
         # Paired PER PATH, in order of appearance. Neither global position nor
