@@ -19627,3 +19627,20 @@ Git fixture and exercised the real enumeration helper under a non-UTF-8
 subprocess default. With this addition the self-test passed 392 cases in both
 the ordinary and C-locale environments. The filename is not a repository
 document, and the control makes no broader filename-compatibility claim.
+
+## Git stream and Python fallback audit - 2026-11-24T22:41:43Z
+
+The pre-edit review reproduced a localized non-UTF-8 Git error masking both a
+new baseline document and a failed diff. A quoted Unicode path also made an
+existing baseline file appear absent. Successful Git payloads now retain
+strict UTF-8 and universal newline handling, while diagnostic bytes are
+escaped separately and the Git command and status are retained. Literal,
+NUL-delimited path queries distinguish an existing name from an absent one.
+
+The earlier fallback changed `locale.getencoding`, but a real Python 3.10.22
+control retained a UTF-8 implicit subprocess decoder and failed the self-test;
+the same control passed on Python 3.12.14. The test-child fallback now changes
+only implicit text subprocesses and measures the actual decoder. The candidate
+self-test passed 443 cases on each interpreter, including the forced fallback,
+eight clean CLI fixtures, sixteen rejected glosses and eleven Git stream
+controls. These controls do not establish native Windows locale behavior.

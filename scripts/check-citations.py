@@ -1671,27 +1671,54 @@ def classify(prefix, path):
     return norm if norm in TRACKED else None
 
 
+def filesystem_path(path):
+    """Pass UTF-8 Git paths to POSIX even under an ASCII filesystem locale."""
+    value = os.fspath(path)
+    if os.name == "nt" or isinstance(value, bytes):
+        return value
+    return os.fsdecode(value.encode("utf-8", errors="surrogateescape"))
+
+
+def git_process(*arguments):
+    """Capture bytes first so a localized error cannot hide Git's status."""
+    return subprocess.run(["git", *(filesystem_path(a) for a in arguments)],
+                          capture_output=True)
+
+
+def git_bytes(result):
+    if result.returncode:
+        # Diagnostics are not repository content. Preserve unknown bytes as
+        # explicit escapes rather than replacing them or guessing a locale.
+        diagnostic = result.stderr.decode("utf-8", errors="backslashreplace")
+        raise subprocess.CalledProcessError(result.returncode, result.args,
+                                            output=result.stdout, stderr=diagnostic)
+    return result.stdout
+
+
+def decode_git_text(payload):
+    """Strict UTF-8 with the universal-newline behavior of text-mode pipes."""
+    return payload.decode("utf-8", errors="strict").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def git_text(*arguments):
-    """Git output in this repository is UTF-8; never replace undecodable bytes."""
-    return subprocess.run(["git", *arguments], capture_output=True, text=True,
-                          encoding="utf-8", errors="strict", check=True).stdout
+    return decode_git_text(git_bytes(git_process(*arguments)))
 
 
 def git_show(ref, path):
-    r = subprocess.run(["git", "show", f"{ref}:{path}"],
-                       capture_output=True, text=True, encoding="utf-8", errors="strict")
+    r = git_process("show", f"{ref}:{path}")
     if r.returncode == 0:
-        return r.stdout.split("\n")
+        return decode_git_text(r.stdout).split("\n")
     # A newly added path has no baseline. Do not mistake a bad revision or a
     # failed read of an existing path for that normal case.
-    paths = git_text("ls-tree", "--name-only", ref, "--", path).splitlines()
-    if path in paths:
-        raise subprocess.CalledProcessError(r.returncode, r.args, r.stdout, r.stderr)
+    paths = git_bytes(git_process("ls-tree", "-z", "--full-tree", "--name-only",
+                                  ref, "--", f":(literal){path}"))
+    if path.encode("utf-8", errors="surrogateescape") in paths.split(b"\0"):
+        git_bytes(r)
     return None
 
 
 def read(path):
-    with open(path, encoding="utf-8", errors="strict") as fh:
+    with open(filesystem_path(path), encoding="utf-8", errors="strict") as fh:
         return fh.read()
 
 
@@ -1865,11 +1892,9 @@ def doc_files():
     line and never changes a line COUNT, so the numbering the citation is
     measured against survives its own repair.
     """
-    # `splitlines`, not `split()`: a tracked path may legally contain a space,
-    # and whitespace-splitting would shatter it into fragments that match
-    # nothing — silently dropping the file from the scan rather than failing.
-    # No such path exists here today, which is exactly why the bug would ship.
-    tracked = git_text("ls-files").splitlines()
+    # NUL-delimited paths avoid Git's quoted spelling and preserve spaces,
+    # newlines and UTF-8 names without treating them as content line endings.
+    tracked = git_bytes(git_process("ls-files", "-z")).decode("utf-8", errors="strict").split("\0")
     out = []
     for p in tracked:
         if p.startswith(EXCLUDED_PREFIXES):
@@ -1941,6 +1966,18 @@ def self_test():
         if got != want:
             failures += 1
             print(f"self-test FAIL: {label}: got {got!r}, want {want!r}", file=sys.stderr)
+
+    check("Git UTF-8 text retains universal newline semantics",
+          decode_git_text(b"a\r\nb\rc\n"), "a\nb\nc\n")
+    check("Git UTF-8 text retains a final empty line",
+          decode_git_text(b"a\r\n").split("\n"), ["a", ""])
+    try:
+        decode_git_text(b"\xff")
+    except UnicodeDecodeError:
+        malformed_rejected = True
+    else:
+        malformed_rejected = False
+    check("Git successful payload rejects malformed UTF-8", malformed_rejected, True)
 
     # --- 1. OWNERSHIP: what this tool may rewrite, and what it must not -----
     # `citations()` returns only the ones it claims, so an empty list IS the
@@ -2579,27 +2616,35 @@ def self_test():
             # Exercise both baseline source and diff decoding with real Git
             # output, without modifying the checked-out production source.
             fixture_engine = fixture / engine
-            with fixture_engine.open("a", encoding="utf-8") as output:
-                output.write("\n// citation fixture baseline \u2502\n")
+            with fixture_engine.open("ab") as output:
+                output.write("\r\n// citation fixture baseline \u2502\r// end\n".encode("utf-8"))
             # A non-document filename makes ls-files emit UTF-8 without asking
             # an ASCII filesystem locale to open that name as a Python string.
             fixture_name = b"citation-fixture-\xc3\xa9.bin"
             with open(os.path.join(os.fsencode(fixture), fixture_name), "wb") as output:
                 output.write(b"fixture\n")
+            unicode_doc = "docs/cafe-\u00e9.md"
+            with open(os.path.join(os.fsencode(fixture), unicode_doc.encode("utf-8")), "wb") as output:
+                output.write(f"Fixture\r\nSource: {engine}:2140\rEnd\n".encode("utf-8"))
+            drift_doc = fixture / "docs/z-citation-drift.md"
+            drift_original = f"Source: {engine}:2140\n"
+            drift_doc.write_text(drift_original, encoding="utf-8")
 
             environment = {key: value for key, value in os.environ.items()
-                           if not key.startswith("GIT_") and key not in ("PYTHONPATH", "PYTHONHOME")}
+                           if not key.startswith("GIT_") and key not in
+                           ("PYTHONPATH", "PYTHONHOME", "ANAMORPH_CITATION_ASCII_DEFAULT",
+                            "ANAMORPH_CITATION_GIT_FAULT", "ANAMORPH_CITATION_GIT_TRACE")}
             environment["GIT_CONFIG_NOSYSTEM"] = "1"
             environment["GIT_CONFIG_GLOBAL"] = os.devnull
             environment["PYTHONIOENCODING"] = "utf-8:strict"
 
             def fixture_git(*arguments):
-                return subprocess.run(["git", *arguments], cwd=fixture, env=environment,
-                                      capture_output=True, text=True, encoding="utf-8",
-                                      errors="strict", check=True).stdout.strip()
+                result = subprocess.run(["git", *(filesystem_path(a) for a in arguments)],
+                                        cwd=fixture, env=environment, capture_output=True)
+                return decode_git_text(git_bytes(result)).strip()
 
             fixture_git("init", "-q")
-            fixture_git("config", "core.quotepath", "false")
+            fixture_git("config", "core.quotepath", "true")
             fixture_git("add", "-A")
             fixture_git("-c", "user.name=Citation Test",
                         "-c", "user.email=citation-test@example.invalid",
@@ -2614,26 +2659,94 @@ def self_test():
             check("CLI baseline Git documentation contains UTF-8",
                   "\u2502" in fixture_git("show", f"{base}:{architecture}"), True)
             check("CLI Git file enumeration includes the architecture document",
-                  architecture in fixture_git("ls-files").splitlines(), True)
+                  architecture in fixture_git("ls-files", "-z").split("\0"), True)
             check("CLI Git file enumeration contains a UTF-8 filename",
-                  fixture_name.decode("utf-8") in fixture_git("ls-files").splitlines(), True)
+                  fixture_name.decode("utf-8") in fixture_git("ls-files", "-z").split("\0"), True)
             with fixture_engine.open("a", encoding="utf-8") as output:
                 output.write("// citation fixture diff \u2500\n")
             check("CLI Git diff contains UTF-8",
                   "\u2500" in fixture_git("diff", "-U0", base, "--", engine), True)
 
-            def fixture_check(env):
-                return subprocess.run(command, cwd=fixture, env=env,
+            def fixture_check(env, revision=None):
+                invocation = command if revision is None else command[:-1] + [revision]
+                return subprocess.run(invocation, cwd=fixture, env=env,
                                       capture_output=True, text=True, encoding="utf-8",
                                       errors="strict")
+
+            # This test-only child hook changes only implicit text-mode Popen
+            # calls. It leaves explicit encodings and binary Git capture alone.
+            # It can also inject raw Git diagnostics without changing Git or
+            # the parent process. The delegated Git queries remain real.
+            injected = fixture / "python-controls"
+            injected.mkdir()
+            hook = r"""
+import os
+import subprocess
+import sys
+_original_popen = subprocess.Popen
+
+class FixturePopen(_original_popen):
+    def __init__(self, args, *positional, **keywords):
+        fault = os.environ.get('ANAMORPH_CITATION_GIT_FAULT', '')
+        if isinstance(args, (list, tuple)) and len(args) >= 2 and \
+                os.path.basename(os.fsdecode(args[0])).lower() in ('git', 'git.exe'):
+            operation = args[1]
+            target = os.fsencode(args[2]) if len(args) > 2 else b''
+            new_doc = operation == 'show' and target.endswith(b':docs/a-new-\xc3\xa9.md')
+            existing_doc = operation == 'show' and target.endswith(b':docs/cafe-\xc3\xa9.md')
+            architecture = operation == 'show' and target.endswith(b':docs/architecture/ARCHITECTURE.md')
+            status = None
+            stderr = b'erro localizado \xe3\n'
+            stdout = b''
+            if new_doc and fault in ('new-ascii', 'new-localized', 'tree-failure'):
+                status = 128
+                if fault == 'new-ascii':
+                    stderr = b'new file absent\n'
+            elif existing_doc and fault == 'existing-show':
+                status = 37
+            elif operation == 'ls-tree' and fault == 'tree-failure':
+                status = 42
+            elif operation == 'diff' and fault == 'diff-failure':
+                status = 42
+            elif operation == 'ls-files' and fault == 'files-failure':
+                status = 42
+            elif architecture and fault == 'malformed-success':
+                status, stdout, stderr = 0, b'\xff', b''
+            if status is not None or (architecture and fault == 'success-warning'):
+                trace = os.environ.get('ANAMORPH_CITATION_GIT_TRACE')
+                if trace:
+                    with open(trace, 'a', encoding='ascii') as output:
+                        output.write(operation + '\n')
+            if status is not None:
+                code = ("import os,sys;os.write(1,bytes.fromhex(sys.argv[1]));"
+                        "os.write(2,bytes.fromhex(sys.argv[2]));sys.exit(int(sys.argv[3]))")
+                args = [sys.executable, '-I', '-c', code, stdout.hex(), stderr.hex(), str(status)]
+            elif architecture and fault == 'success-warning':
+                code = ("import os,subprocess,sys;p=subprocess.run(sys.argv[1:],capture_output=True);"
+                        "os.write(1,p.stdout);os.write(2,p.stderr+bytes.fromhex('e3'));sys.exit(p.returncode)")
+                args = [sys.executable, '-I', '-c', code, *args]
+        if (os.environ.get('ANAMORPH_CITATION_ASCII_DEFAULT') == '1' and
+                (keywords.get('text') or keywords.get('universal_newlines')) and
+                keywords.get('encoding') is None):
+            keywords['encoding'] = 'ascii'
+        super().__init__(args, *positional, **keywords)
+
+subprocess.Popen = FixturePopen
+"""
+            (injected / "sitecustomize.py").write_text(hook, encoding="ascii")
 
             locale_env = dict(environment, LC_ALL="C", LANG="C", PYTHONUTF8="0",
                               PYTHONCOERCECLOCALE="0")
             probe_code = ("import locale, subprocess, sys; "
                           "p = subprocess.Popen(['git', '--version'], stdout=subprocess.PIPE, text=True); "
                           "encoding = p.stdout.encoding; p.communicate(); "
+                          "q = subprocess.Popen(['git', '--version'], stdout=subprocess.PIPE, "
+                          "text=True, encoding='utf-8'); explicit = q.stdout.encoding; q.communicate(); "
+                          "b = subprocess.Popen(['git', '--version'], stdout=subprocess.PIPE); "
+                          "binary = str(getattr(b.stdout, 'encoding', None)); b.communicate(); "
                           "print('|'.join((locale.getpreferredencoding(False), encoding, "
-                          "str(sys.flags.utf8_mode), sys.stdout.encoding, sys.stderr.encoding)))")
+                          "str(sys.flags.utf8_mode), sys.stdout.encoding, sys.stderr.encoding, "
+                          "explicit, binary)))")
 
             def probe_encoding(env):
                 result = subprocess.run([sys.executable, "-c", probe_code], cwd=fixture, env=env,
@@ -2643,26 +2756,45 @@ def self_test():
 
             probe = probe_encoding(locale_env)
             if probe[1].lower().replace("-", "") == "utf8":
-                # Some Windows installations have a UTF-8 system code page even
-                # in C locale. Force the subprocess default only in this child.
-                injected = fixture / "encoding-control"
-                injected.mkdir()
-                (injected / "sitecustomize.py").write_text(
-                    "import locale\nlocale.getencoding = lambda: 'ascii'\n", encoding="utf-8")
                 locale_env["PYTHONPATH"] = str(injected)
+                locale_env["ANAMORPH_CITATION_ASCII_DEFAULT"] = "1"
                 probe = probe_encoding(locale_env)
             check("CLI locale control disables Python UTF-8 mode", probe[2], "0")
             check("CLI locale control uses a non-UTF-8 subprocess default",
                   probe[1].lower().replace("-", "") != "utf8", True)
             check("CLI child stdout and stderr use UTF-8",
-                  [part.lower().replace("-", "") for part in probe[3:]], ["utf8", "utf8"])
+                  [part.lower().replace("-", "") for part in probe[3:5]], ["utf8", "utf8"])
             print(f"check-citations: CLI locale control: locale={probe[0]}, "
                   f"subprocess={probe[1]}, utf8_mode={probe[2]}, streams={probe[3]}/{probe[4]}.")
+
+            # Exercise the fallback even on machines whose C locale is already
+            # non-UTF-8. Python UTF-8 mode supplies a portable UTF-8 default if
+            # C.UTF-8 is unavailable; Linux normally measures mode zero here.
+            forced_env = dict(environment, LC_ALL="C.UTF-8", LANG="C.UTF-8",
+                              PYTHONUTF8="0", PYTHONCOERCECLOCALE="0")
+            before = probe_encoding(forced_env)
+            if before[1].lower().replace("-", "") != "utf8":
+                forced_env["PYTHONUTF8"] = "1"
+                before = probe_encoding(forced_env)
+            check("CLI fallback starts with a UTF-8 subprocess default",
+                  before[1].lower().replace("-", ""), "utf8")
+            forced_env["PYTHONPATH"] = str(injected)
+            forced_env["ANAMORPH_CITATION_ASCII_DEFAULT"] = "1"
+            after = probe_encoding(forced_env)
+            check("CLI fallback changes the actual implicit subprocess encoding",
+                  after[1].lower(), "ascii")
+            check("CLI fallback preserves explicit UTF-8 subprocess encoding",
+                  after[5].lower().replace("-", ""), "utf8")
+            check("CLI fallback preserves binary subprocess capture", after[6], "None")
+            check("CLI fallback preserves child stdout and stderr encoding",
+                  [part.lower().replace("-", "") for part in after[3:5]], ["utf8", "utf8"])
+            print(f"check-citations: CLI fallback control: before={before[1]}, after={after[1]}, "
+                  f"utf8_mode={after[2]}, streams={after[3]}/{after[4]}.")
 
             enumeration_code = ("import importlib.util, sys; "
                                 "s = importlib.util.spec_from_file_location('citations', sys.argv[1]); "
                                 "m = importlib.util.module_from_spec(s); s.loader.exec_module(m); "
-                                "m.doc_files(); print('enumerated')")
+                                "print('enumerated' if 'docs/cafe-\\u00e9.md' in m.doc_files() else 'missing')")
             enumeration = subprocess.run([sys.executable, "-c", enumeration_code,
                                           str(Path(__file__).resolve())], cwd=fixture,
                                          env=locale_env, capture_output=True, text=True,
@@ -2717,8 +2849,9 @@ def self_test():
                         f"\nAdditional fixture: `{mono}` (`monoMaker.process`).\n")
             variants.append(("ambient repeated", environment, repeated))
             variants.append(("non-UTF-8", locale_env, original))
-            check("CLI fixture constructs all seven variants", len(variants), 7)
-            cli_passed = len(variants) == 7
+            variants.append(("forced fallback", forced_env, original))
+            check("CLI fixture constructs all eight variants", len(variants), 8)
+            cli_passed = len(variants) == 8
             clean_runs = negative_runs = 0
             for label, env, baseline in variants:
                 fixture_adr.write_text(baseline, encoding="utf-8")
@@ -2753,11 +2886,57 @@ def self_test():
                     check(f"CLI {label} identifies the invalid {symbol} gloss",
                           diagnostic in result.stderr, True)
                     cli_passed = cli_passed and result.returncode == 2 and diagnostic in result.stderr
-            check("CLI fixture ran every clean control", clean_runs, 7)
-            check("CLI fixture ran every negative control", negative_runs, 14)
-            cli_passed = cli_passed and clean_runs == 7 and negative_runs == 14
+            check("CLI fixture ran every clean control", clean_runs, 8)
+            check("CLI fixture ran every negative control", negative_runs, 16)
+            cli_passed = cli_passed and clean_runs == 8 and negative_runs == 16
             if cli_passed:
-                print("check-citations: CLI gloss controls passed (seven clean, fourteen rejected).")
+                print("check-citations: CLI gloss controls passed (eight clean, sixteen rejected).")
+
+            # Exercise actual CLI exits with non-UTF-8 Git diagnostics. The
+            # new document is staged after the baseline; ls-tree is real and
+            # must distinguish it from the quoted existing Unicode path.
+            fixture_adr.write_text(original, encoding="utf-8")
+            new_doc = "docs/a-new-\u00e9.md"
+            with open(os.path.join(os.fsencode(fixture), new_doc.encode("utf-8")), "wb") as output:
+                output.write(b"A new document.\n")
+            fixture_git("add", new_doc)
+
+            def fault_check(label, expected, marker, revision=None):
+                trace = fixture / "git-fault-trace"
+                trace.unlink(missing_ok=True)
+                fault_env = dict(locale_env, PYTHONPATH=str(injected),
+                                 ANAMORPH_CITATION_GIT_FAULT=label,
+                                 ANAMORPH_CITATION_GIT_TRACE=str(trace))
+                result = fixture_check(fault_env, revision)
+                check(f"CLI Git {label} exit", result.returncode, expected)
+                check(f"CLI Git {label} diagnostic", marker in result.stdout + result.stderr, True)
+                operations = {
+                    "new-ascii": "show", "new-localized": "show", "existing-show": "show",
+                    "tree-failure": "ls-tree", "diff-failure": "diff", "files-failure": "ls-files",
+                    "success-warning": "show", "malformed-success": "show",
+                }
+                if label in operations:
+                    observed = trace.read_text(encoding="ascii").splitlines() if trace.exists() else []
+                    check(f"CLI Git {label} injected the intended command",
+                          operations[label] in observed, True)
+
+            fault_check("new-ascii", 0, "anchor(s) still point at the same text")
+            fault_check("new-localized", 0, "anchor(s) still point at the same text")
+            fault_check("existing-show", 2, r"Git command failed (37): erro localizado \xe3")
+            fault_check("tree-failure", 2, r"Git command failed (42): erro localizado \xe3")
+            fault_check("diff-failure", 2, r"Git command failed (42): erro localizado \xe3")
+            fault_check("files-failure", 2, r"Git command failed (42): erro localizado \xe3")
+            fault_check("success-warning", 0, "anchor(s) still point at the same text")
+            fault_check("malformed-success", 2, "invalid UTF-8 repository or Git text")
+            fault_check("invalid-base", 2, "Git command failed", "no/such/revision")
+
+            fixture_adr.write_bytes(original.encode("utf-8") + b"\xff")
+            fault_check("malformed-working", 2, "invalid UTF-8 repository or Git text")
+            fixture_adr.write_text(original, encoding="utf-8")
+            drift_doc.write_text(f"Source: {engine}:1\n", encoding="utf-8")
+            fault_check("new-localized", 1, "docs/z-citation-drift.md")
+            drift_doc.write_text(drift_original, encoding="utf-8")
+            print("check-citations: Git stream controls executed (11 CLI cases).")
     except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         check(f"CLI integration fixture setup succeeded ({error})", False, True)
 
@@ -3730,7 +3909,7 @@ def main():
                       + ". An entry naming a string no document contains excuses nothing, and "
                         "the citation self-test fails on it.")
 
-            with open(doc, "w", encoding="utf-8") as fh:
+            with open(filesystem_path(doc), "w", encoding="utf-8") as fh:
                 fh.write(rewritten)
             # `now_src` IS THE WORKING TREE, and it stopped being so the moment a
             # TRACKED SOURCE joined the scanned set. The snapshot is taken once,
@@ -3859,4 +4038,5 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as error:
         print(f"check-citations: Git command failed ({error.returncode}): "
               f"{error.stderr or error}", file=sys.stderr)
+        print(f"check-citations: Git command: {error.cmd!r}", file=sys.stderr)
         sys.exit(2)

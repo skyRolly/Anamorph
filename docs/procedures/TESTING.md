@@ -6771,16 +6771,23 @@ ADR-0006 symbol gloss. It checks the exit status and named diagnostic, so discon
 CLI verifier fails even while helper tests still pass. The Mono Maker enable fixture accepts
 whitespace variations and requires exactly one matching source condition.
 
-Git text and CLI diagnostics use strict UTF-8 independently of the ambient locale. The
-temporary baseline includes UTF-8 source and documentation, its diff includes UTF-8,
-and Git file enumeration includes a synthetic UTF-8 filename.
-The self-test runs the CLI with both its ambient environment and a measured non-UTF-8
-subprocess default; on a UTF-8-only system it injects an ASCII default for that control.
-Its parent and child agree on UTF-8 output. Four combinations of the existing backtick and
+Git process results are captured as bytes. Successful repository text is decoded as strict
+UTF-8 with universal newline handling; unknown diagnostic bytes are escaped separately, so
+they cannot hide a Git failure or a missing baseline document. NUL-delimited Git paths retain
+Unicode names without relying on quoted path spellings. The temporary baseline includes UTF-8
+source and documentation, its diff includes UTF-8, and file enumeration includes a synthetic
+UTF-8 filename. The self-test runs the CLI with both its ambient environment and a measured
+non-UTF-8 subprocess default. Its forced fallback alters only implicit text-mode subprocesses
+inside the test child; explicitly encoded and binary captures remain unchanged. The actual
+fallback was exercised on Python 3.10 and 3.12, with UTF-8 child output. Four combinations of
+the existing backtick and
 double-quote gloss forms, permitted spacing, and an earlier repeated claim each run a clean
 CLI check and independent invalid-symbol checks. Mutations select the parsed citation and
 gloss span; unrelated parentheticals cannot redirect them. The source-text gloss check is
 still separate from verification of DSP stage ordering.
+The Git controls exercise localized stderr, failed existence and diff queries, malformed
+payloads, Unicode path identity and a later drifted document through the real CLI. Restoring
+shared text-mode capture must fail these controls, even when the underlying Git output is valid.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
