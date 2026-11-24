@@ -19627,3 +19627,8 @@ Git fixture and exercised the real enumeration helper under a non-UTF-8
 subprocess default. With this addition the self-test passed 392 cases in both
 the ordinary and C-locale environments. The filename is not a repository
 document, and the control makes no broader filename-compatibility claim.
+
+
+## Native Intel AU observation audit - 2026-11-24T22:29:45Z
+
+The existing RISK-017 record predates the current native Intel AU failure. The nonshipping observation record now distinguishes the original failure from a current-source reconstruction and identifies the bounded seed and first-throw observer. No result or callback owner is inferred before the campaign executes.

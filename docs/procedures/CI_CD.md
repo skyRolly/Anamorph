@@ -2708,3 +2708,6 @@ shadowing, compiler-dependency and declared-result checks. This adds no product
 DSP build or historical benchmark to the lint lane. Actual receipt-controlled
 replays and platform validation are separately recorded; the synthetic gate
 cannot establish their numerical results or attest to system toolchains.
+
+
+The nonshipping native Intel AU observer for source `938db1e707de05351d488f797168b58b61bc94c0` records a reconstructed AU and locked validator separately from the original failed run. Its typed-throw canary and four-trial bound are diagnostic evidence, not a replacement for the ordinary fail-fast gate.

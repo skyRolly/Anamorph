@@ -7960,3 +7960,6 @@ The test's private-state access uses explicitly typed friend declarations so
 the same regression compiles under MSVC as well as GCC and Clang. The wrapped
 comparison uses distinct local names so the GCC and Clang warning gates remain
 active without a baseline exception.
+
+
+The nonshipping native Intel AU observation uses the recorded `0x2d5b1be` seed against a separately identified reconstruction. A typed first-throw canary precedes the bounded campaign; the observer output and ordinary pluginval result remain distinct.

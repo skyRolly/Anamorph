@@ -1,0 +1,125 @@
+name: Native Intel AU 938 diagnostic
+
+# Nonshipping observation of one recorded failure; never a conformance gate.
+on:
+  push:
+    branches: [codex/au-938-native-observer]
+    paths: [.github/workflows/au-938-observer.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: macos-15-intel
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 938db1e707de05351d488f797168b58b61bc94c0
+          path: original-source
+          persist-credentials: false
+      - name: Record identities and verify native execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic-evidence
+          test "$(uname -m)" = x86_64
+          test "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 0
+          test "$(git -C original-source rev-parse HEAD)" = 938db1e707de05351d488f797168b58b61bc94c0
+          test "$(git -C original-source rev-parse HEAD^{tree})" = 677afef4dc70e5d1bce34b006c45202bbc5435b6
+          {
+            date -u +%Y-%m-%dT%H:%M:%SZ
+            echo 'original failure: run 45464575209 job 138696109456; seed 0x2d5b1be'
+            echo 'reconstruction: native x86_64, build number 2671, JUCE pin from original source'
+            echo 'budget: typed canary plus at most four 180-second observations; job limit 55 minutes'
+            echo "diagnostic commit: $(git rev-parse HEAD)"
+            echo "source commit: $(git -C original-source rev-parse HEAD)"
+            echo "source tree: $(git -C original-source rev-parse HEAD^{tree})"
+            echo "runner image: ${ImageOS:-unknown} ${ImageVersion:-unknown}"
+            uname -m
+            sysctl -n sysctl.proc_translated 2>/dev/null || echo 0
+            sw_vers
+            xcodebuild -version
+            xcrun clang++ --version
+            cmake --version
+            ninja --version
+          } > diagnostic-evidence/host.txt
+      - name: Verify observer and crash classification
+        run: |
+          python3 scripts/diagnose-au-teardown.py --self-test | tee diagnostic-evidence/observer-self-test.log
+          bash scripts/run-pluginval.sh --self-test | tee diagnostic-evidence/crash-classifier-self-test.log
+      - name: Reconstruct the recorded AU source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S original-source -B original-source/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 -DANAMORPH_BUILD_STANDALONE=OFF \
+            -DANAMORPH_BUILD_NUMBER=2671 2>&1 | tee diagnostic-evidence/configure.log
+          test "$(git -C original-source/build/_deps/juce-src rev-parse HEAD)" = d60b7a78030661574a615b586d9325ba7a7fa7dd
+          cmake --build original-source/build --config Release --target Anamorph_AU 2>&1 | tee diagnostic-evidence/build.log
+          AU="$PWD/original-source/build/Anamorph_artefacts/Release/AU/Anamorph.component"
+          BIN="$AU/Contents/MacOS/Anamorph"
+          test "$(lipo -archs "$BIN")" = x86_64
+          shasum -a 256 "$BIN" > diagnostic-evidence/reconstructed-au.sha256
+          tar -czf diagnostic-evidence/reconstructed-au.tar.gz -C "$(dirname "$AU")" Anamorph.component
+          shasum -a 256 diagnostic-evidence/reconstructed-au.tar.gz > diagnostic-evidence/reconstructed-archive.sha256
+      - name: Prepare locked validator and disposable AU
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          VALIDATOR="$(python3 original-source/scripts/acquire-pluginval.py --tools "$PWD/.tools")"
+          printf '%s  %s\n' 32ec60efb9f8161f0b840103f9bd98fa455cd86ec59eb2803133b4382fa4425c "$VALIDATOR" | shasum -a 256 --check
+          cp "$VALIDATOR" diagnostic-evidence/pluginval
+          shasum -a 256 "$VALIDATOR" > diagnostic-evidence/pluginval.sha256
+          DEST="$HOME/Library/Audio/Plug-Ins/Components/Anamorph.component"
+          test ! -e "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -R original-source/build/Anamorph_artefacts/Release/AU/Anamorph.component "$DEST"
+          shasum -a 256 "$DEST/Contents/MacOS/Anamorph" > diagnostic-evidence/installed-au.sha256
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          echo "pluginval=$VALIDATOR" >> "$GITHUB_OUTPUT"
+          echo "bundle=$DEST" >> "$GITHUB_OUTPUT"
+      - name: Prepare current-seed observer copy
+        run: |
+          mkdir -p diagnostic-observer
+          cp scripts/au_teardown_lldb.py diagnostic-observer/
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('scripts/diagnose-au-teardown.py').read_text(encoding='utf-8')
+          old = "'--random-seed','0x3e1c70'"
+          new = "'--random-seed','0x2d5b1be'"
+          assert text.count(old) == 1
+          Path('diagnostic-observer/diagnose-au-teardown.py').write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          shasum -a 256 diagnostic-observer/*.py > diagnostic-evidence/observer-source.sha256
+      - name: Typed first-throw canary and bounded current-seed campaign
+        shell: bash
+        run: |
+          set -uo pipefail
+          python3 diagnostic-observer/diagnose-au-teardown.py \
+            --pluginval "${{ steps.prepare.outputs.pluginval }}" \
+            --bundle "${{ steps.prepare.outputs.bundle }}" \
+            --au-source-commit 938db1e707de05351d488f797168b58b61bc94c0 \
+            --report-dir diagnostic-evidence/observations --attempts 4 --expect completed \
+            2>&1 | tee diagnostic-evidence/campaign.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > diagnostic-evidence/campaign.exit
+          exit "$status"
+      - name: Retain diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: anamorph-au-938-first-throw-diagnostic
+          path: |
+            diagnostic-evidence/
+            diagnostic-observer/
+          if-no-files-found: warn
+      - name: Remove disposable AU
+        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        run: rm -rf "${{ steps.prepare.outputs.bundle }}"

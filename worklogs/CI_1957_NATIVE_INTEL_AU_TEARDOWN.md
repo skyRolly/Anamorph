@@ -296,3 +296,8 @@ both require CXXABI_1.3.15, exceeding the declared 1.3.14 floor. The checks belo
 that point did not run as part of preflight. No ABI floor or check is relaxed;
 the separate citation checks above ran explicitly. Mandatory Linux CI must build
 and validate the final source with the repository's pinned toolchain.
+
+
+## Current-source observation - 2026-11-24T22:29:45Z
+
+The nonshipping native Intel observer reconstructs source `938db1e707de05351d488f797168b58b61bc94c0` with build number 2671 and the locked validator, then tests seed `0x2d5b1be`. The original failed AU bytes were not retained. A typed-throw canary precedes at most four bounded observations. The reconstructed AU, validator, identities and observer outputs are retained as diagnostic evidence; this is not a conformance result or a claim about callback ownership.
