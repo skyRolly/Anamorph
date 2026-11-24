@@ -6794,6 +6794,10 @@ For source files containing lone CR line endings, the checker maps normalized li
 Git's no-index diff; ordinary LF and CRLF sources keep the existing repository diff path.
 The CLI fixture checks drift, repair and a clean recheck, and rejects failed or malformed
 normalized diff results. A lone-CR document keeps its text and unrelated citations.
+The normalized-diff self-tests also isolate inherited and repository-local Git
+configuration in disposable subprocesses. Their controls prove the injected
+configuration would fail Git before checking that isolation preserves the map.
+Ordinary checker invocations retain their own Git environment and working directory.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and

@@ -19664,3 +19664,13 @@ newlines. The targeted path now maps normalized source lines with Git's
 no-index diff when either source contains a lone CR. A disposable check maps
 line 10 to 11, repairs it, and passes the next check while preserving a Unicode
 diagram and an unrelated citation. Ordinary LF and CRLF mapping is unchanged.
+
+## Git fixture isolation audit - 2026-11-24T23:42:43Z
+
+An injected invalid `diff.algorithm` made the new normalized-diff self-test exit
+2 before its isolated fixture started; the prior self-test passed with the same
+inherited setting. The self-test now supplies a sanitized Git environment and a
+disposable working directory for its normalized-diff controls. Separate probes
+confirm that both the inherited setting and a disposable repository-local setting
+reach Git without isolation, and that isolated mapping succeeds. Ordinary checker
+invocations still use their own Git configuration and working directory.

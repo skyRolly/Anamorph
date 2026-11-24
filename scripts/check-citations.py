@@ -1679,10 +1679,22 @@ def filesystem_path(path):
     return os.fsdecode(value.encode("utf-8", errors="surrogateescape"))
 
 
-def git_process(*arguments):
+def git_process(*arguments, env=None, cwd=None):
     """Capture bytes first so a localized error cannot hide Git's status."""
     return subprocess.run(["git", *(filesystem_path(a) for a in arguments)],
-                          capture_output=True)
+                          capture_output=True, env=env, cwd=cwd)
+
+
+def fixture_environment(inherited):
+    """Isolate self-test children without changing the caller's environment."""
+    environment = {key: value for key, value in inherited.items()
+                   if not key.startswith("GIT_") and key not in
+                   ("PYTHONPATH", "PYTHONHOME", "ANAMORPH_CITATION_ASCII_DEFAULT",
+                    "ANAMORPH_CITATION_GIT_FAULT", "ANAMORPH_CITATION_GIT_TRACE")}
+    environment["GIT_CONFIG_NOSYSTEM"] = "1"
+    environment["GIT_CONFIG_GLOBAL"] = os.devnull
+    environment["PYTHONIOENCODING"] = "utf-8:strict"
+    return environment
 
 
 def git_bytes(result):
@@ -1869,7 +1881,7 @@ def build_line_map(base, path):
     return line_map_from_diff(diff)
 
 
-def normalized_line_map(old_lines, new_lines):
+def normalized_line_map(old_lines, new_lines, *, env=None):
     """Use Git's hunk mapping on universal-newline text for bare-CR files."""
     with tempfile.TemporaryDirectory(prefix="anamorph-citation-lines-") as temporary:
         old = Path(temporary) / "old"
@@ -1877,7 +1889,8 @@ def normalized_line_map(old_lines, new_lines):
         old.write_bytes("\n".join(old_lines).encode("utf-8"))
         new.write_bytes("\n".join(new_lines).encode("utf-8"))
         result = git_process("diff", "--no-index", "--no-ext-diff", "--no-color",
-                             "--text", "-U0", "--", str(old), str(new))
+                             "--text", "-U0", "--", str(old), str(new), env=env,
+                             cwd=temporary if env is not None else None)
         # Unlike the repository diff, --no-index returns 1 for a real diff.
         if result.returncode not in (0, 1):
             git_bytes(result)
@@ -1999,14 +2012,34 @@ def self_test():
           decode_git_text(b"a\r\n").split("\n"), ["a", ""])
     check("bare CR detection ignores CRLF", has_bare_cr(b"a\r\nb\n"), False)
     check("bare CR detection finds mixed line endings", has_bare_cr(b"a\r\nb\rc\n"), True)
-    normalized_map = normalized_line_map(["a", "b", "c", ""], ["new", "a", "b", "c", ""])
-    check("normalized Git diff maps an insertion", normalized_map(2), 3)
-    check("normalized Git diff retains the final empty line", normalized_map(4), 5)
-    removed_map = normalized_line_map(["a", "b", "c", ""], ["a", "c", ""])
-    check("normalized Git diff marks a removed line unmappable", removed_map(2), None)
-    check("normalized Git diff maps after a deletion", removed_map(3), 2)
-    unchanged_map = normalized_line_map(["a", "b", ""], ["a", "b", ""])
-    check("normalized Git diff preserves identical lines", unchanged_map(2), 2)
+    isolation_failures = failures
+    poisoned = fixture_environment(os.environ)
+    poisoned.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="diff.algorithm",
+                    GIT_CONFIG_VALUE_0="invalid-for-citation-control")
+    try:
+        normalized_line_map(["a", ""], ["new", "a", ""], env=poisoned)
+    except subprocess.CalledProcessError as error:
+        check("poisoned Git configuration reaches Git", error.returncode, 128)
+        check("poisoned Git configuration identifies its value",
+              "invalid-for-citation-control" in error.stderr, True)
+    else:
+        check("poisoned Git configuration reaches Git", False, True)
+    isolated = fixture_environment(poisoned)
+    try:
+        normalized_map = normalized_line_map(["a", "b", "c", ""], ["new", "a", "b", "c", ""], env=isolated)
+        removed_map = normalized_line_map(["a", "b", "c", ""], ["a", "c", ""], env=isolated)
+        unchanged_map = normalized_line_map(["a", "b", ""], ["a", "b", ""], env=isolated)
+    except subprocess.CalledProcessError:
+        check("normalized mapping isolates inherited Git configuration", False, True)
+    else:
+        check("normalized mapping isolates inherited Git configuration", True, True)
+        check("normalized Git diff maps an insertion", normalized_map(2), 3)
+        check("normalized Git diff retains the final empty line", normalized_map(4), 5)
+        check("normalized Git diff marks a removed line unmappable", removed_map(2), None)
+        check("normalized Git diff maps after a deletion", removed_map(3), 2)
+        check("normalized Git diff preserves identical lines", unchanged_map(2), 2)
+    if failures == isolation_failures:
+        print("check-citations: isolated Git configuration controls passed.")
     try:
         decode_git_text(b"\xff")
     except UnicodeDecodeError:
@@ -2666,13 +2699,7 @@ def self_test():
             drift_original = f"Source: {engine}:2140\n"
             drift_doc.write_text(drift_original, encoding="utf-8")
 
-            environment = {key: value for key, value in os.environ.items()
-                           if not key.startswith("GIT_") and key not in
-                           ("PYTHONPATH", "PYTHONHOME", "ANAMORPH_CITATION_ASCII_DEFAULT",
-                            "ANAMORPH_CITATION_GIT_FAULT", "ANAMORPH_CITATION_GIT_TRACE")}
-            environment["GIT_CONFIG_NOSYSTEM"] = "1"
-            environment["GIT_CONFIG_GLOBAL"] = os.devnull
-            environment["PYTHONIOENCODING"] = "utf-8:strict"
+            environment = fixture_environment(os.environ)
 
             def fixture_git(*arguments):
                 result = subprocess.run(["git", *(filesystem_path(a) for a in arguments)],
@@ -2688,6 +2715,35 @@ def self_test():
                         "--no-verify", "-m", "Synthetic citation baseline")
             base = fixture_git("rev-parse", "HEAD")
             command = [sys.executable, str(Path(__file__).resolve()), "--check", "--base", base]
+
+            # The no-index unit probe must not inherit a caller repository's
+            # local Git configuration either. Both probes use a disposable repo.
+            local_config_repo = fixture / "local-config-probe"
+            local_config_repo.mkdir()
+            fixture_git("-C", str(local_config_repo), "init", "-q")
+            fixture_git("-C", str(local_config_repo), "config", "diff.algorithm",
+                        "invalid-for-citation-control")
+            local_probe_code = ("import importlib.util,os,subprocess,sys; "
+                                "s=importlib.util.spec_from_file_location('citations',sys.argv[1]); "
+                                "m=importlib.util.module_from_spec(s);s.loader.exec_module(m); "
+                                "env=m.fixture_environment(os.environ) if sys.argv[2]=='isolated' else None; "
+                                "exec(\"try:\\n p=m.normalized_line_map(['a','b',''],['new','a','b',''],env=env); "
+                                "print('mapped',p(2))\\nexcept subprocess.CalledProcessError as e:\\n "
+                                "print('git-status',e.returncode);sys.exit(1)\")")
+            def local_config_probe(mode):
+                return subprocess.run([sys.executable, "-c", local_probe_code,
+                                       str(Path(__file__).resolve()), mode], cwd=local_config_repo,
+                                      env=environment, capture_output=True, text=True,
+                                      encoding="utf-8", errors="strict")
+            raw_local = local_config_probe("raw")
+            check("local Git configuration poison reaches Git", raw_local.returncode, 1)
+            check("local Git configuration poison reports its Git status", "git-status 128" in raw_local.stdout, True)
+            isolated_local = local_config_probe("isolated")
+            check("normalized mapping isolates repository-local Git configuration", isolated_local.returncode, 0)
+            check("isolated local Git configuration preserves the mapping", "mapped 3" in isolated_local.stdout, True)
+            if (raw_local.returncode == 1 and "git-status 128" in raw_local.stdout and
+                    isolated_local.returncode == 0 and "mapped 3" in isolated_local.stdout):
+                print("check-citations: repository-local Git isolation controls passed.")
 
             check("CLI baseline Git source contains UTF-8",
                   "\u2502" in fixture_git("show", f"{base}:{engine}"), True)
