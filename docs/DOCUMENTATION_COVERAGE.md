@@ -19621,3 +19621,9 @@ diagnostics. Its self-test passed 389 cases, including seven clean CLI runs
 and fourteen independently rejected gloss mutations across quote, spacing,
 repetition, and non-UTF-8 subprocess controls. TESTING records the boundaries;
 the checks do not establish complete DSP stage order or native acceptance.
+
+The follow-up file-list audit added a synthetic UTF-8 filename to the isolated
+Git fixture and exercised the real enumeration helper under a non-UTF-8
+subprocess default. With this addition the self-test passed 392 cases in both
+the ordinary and C-locale environments. The filename is not a repository
+document, and the control makes no broader filename-compatibility claim.

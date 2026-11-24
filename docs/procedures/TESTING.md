@@ -6772,7 +6772,8 @@ CLI verifier fails even while helper tests still pass. The Mono Maker enable fix
 whitespace variations and requires exactly one matching source condition.
 
 Git text and CLI diagnostics use strict UTF-8 independently of the ambient locale. The
-temporary baseline includes UTF-8 source and documentation, and its diff includes UTF-8.
+temporary baseline includes UTF-8 source and documentation, its diff includes UTF-8,
+and Git file enumeration includes a synthetic UTF-8 filename.
 The self-test runs the CLI with both its ambient environment and a measured non-UTF-8
 subprocess default; on a UTF-8-only system it injects an ASCII default for that control.
 Its parent and child agree on UTF-8 output. Four combinations of the existing backtick and

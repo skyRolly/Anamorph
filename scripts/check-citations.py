@@ -2581,6 +2581,11 @@ def self_test():
             fixture_engine = fixture / engine
             with fixture_engine.open("a", encoding="utf-8") as output:
                 output.write("\n// citation fixture baseline \u2502\n")
+            # A non-document filename makes ls-files emit UTF-8 without asking
+            # an ASCII filesystem locale to open that name as a Python string.
+            fixture_name = b"citation-fixture-\xc3\xa9.bin"
+            with open(os.path.join(os.fsencode(fixture), fixture_name), "wb") as output:
+                output.write(b"fixture\n")
 
             environment = {key: value for key, value in os.environ.items()
                            if not key.startswith("GIT_") and key not in ("PYTHONPATH", "PYTHONHOME")}
@@ -2594,6 +2599,7 @@ def self_test():
                                       errors="strict", check=True).stdout.strip()
 
             fixture_git("init", "-q")
+            fixture_git("config", "core.quotepath", "false")
             fixture_git("add", "-A")
             fixture_git("-c", "user.name=Citation Test",
                         "-c", "user.email=citation-test@example.invalid",
@@ -2609,6 +2615,8 @@ def self_test():
                   "\u2502" in fixture_git("show", f"{base}:{architecture}"), True)
             check("CLI Git file enumeration includes the architecture document",
                   architecture in fixture_git("ls-files").splitlines(), True)
+            check("CLI Git file enumeration contains a UTF-8 filename",
+                  fixture_name.decode("utf-8") in fixture_git("ls-files").splitlines(), True)
             with fixture_engine.open("a", encoding="utf-8") as output:
                 output.write("// citation fixture diff \u2500\n")
             check("CLI Git diff contains UTF-8",
@@ -2650,6 +2658,18 @@ def self_test():
                   [part.lower().replace("-", "") for part in probe[3:]], ["utf8", "utf8"])
             print(f"check-citations: CLI locale control: locale={probe[0]}, "
                   f"subprocess={probe[1]}, utf8_mode={probe[2]}, streams={probe[3]}/{probe[4]}.")
+
+            enumeration_code = ("import importlib.util, sys; "
+                                "s = importlib.util.spec_from_file_location('citations', sys.argv[1]); "
+                                "m = importlib.util.module_from_spec(s); s.loader.exec_module(m); "
+                                "m.doc_files(); print('enumerated')")
+            enumeration = subprocess.run([sys.executable, "-c", enumeration_code,
+                                          str(Path(__file__).resolve())], cwd=fixture,
+                                         env=locale_env, capture_output=True, text=True,
+                                         encoding="utf-8", errors="strict")
+            check("CLI locale Git file enumeration exits successfully", enumeration.returncode, 0)
+            check("CLI locale Git file enumeration reaches its result",
+                  enumeration.stdout.strip(), "enumerated")
 
             fixture_adr = fixture / adr
             original = fixture_adr.read_text(encoding="utf-8")
