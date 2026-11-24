@@ -1073,6 +1073,11 @@ def anchor_still_right(tracked, base_src, now_src, a, b, a2, b2):
     return True
 
 
+def gloss_match(text, span):
+    """Match the existing gloss grammar immediately after a citation."""
+    return GLOSS.match(text[span[1]:span[1] + 200])
+
+
 def gloss_after(text, span):
     """The gloss a citation carries, or None. ONE spelling of the extraction.
 
@@ -1080,7 +1085,7 @@ def gloss_after(text, span):
     (`glossed_problems_in`) need the same parenthetical, and a second spelling of
     it is a second set of citation semantics waiting to disagree with the first.
     """
-    m = GLOSS.match(text[span[1]:span[1] + 200])
+    m = gloss_match(text, span)
     return (m.group(1) or m.group(2)) if m else None
 
 
@@ -1666,14 +1671,27 @@ def classify(prefix, path):
     return norm if norm in TRACKED else None
 
 
+def git_text(*arguments):
+    """Git output in this repository is UTF-8; never replace undecodable bytes."""
+    return subprocess.run(["git", *arguments], capture_output=True, text=True,
+                          encoding="utf-8", errors="strict", check=True).stdout
+
+
 def git_show(ref, path):
     r = subprocess.run(["git", "show", f"{ref}:{path}"],
-                       capture_output=True, text=True)
-    return r.stdout.split("\n") if r.returncode == 0 else None
+                       capture_output=True, text=True, encoding="utf-8", errors="strict")
+    if r.returncode == 0:
+        return r.stdout.split("\n")
+    # A newly added path has no baseline. Do not mistake a bad revision or a
+    # failed read of an existing path for that normal case.
+    paths = git_text("ls-tree", "--name-only", ref, "--", path).splitlines()
+    if path in paths:
+        raise subprocess.CalledProcessError(r.returncode, r.args, r.stdout, r.stderr)
+    return None
 
 
 def read(path):
-    with open(path, encoding="utf-8", errors="replace") as fh:
+    with open(path, encoding="utf-8", errors="strict") as fh:
         return fh.read()
 
 
@@ -1815,8 +1833,7 @@ def line_map_from_diff(diff):
 
 def build_line_map(base, path):
     """old line -> new line for `path` between `base` and the working tree."""
-    diff = subprocess.run(["git", "diff", "-U0", base, "--", path],
-                          capture_output=True, text=True).stdout
+    diff = git_text("diff", "-U0", base, "--", path)
     return line_map_from_diff(diff)
 
 
@@ -1852,8 +1869,7 @@ def doc_files():
     # and whitespace-splitting would shatter it into fragments that match
     # nothing — silently dropping the file from the scan rather than failing.
     # No such path exists here today, which is exactly why the bug would ship.
-    tracked = subprocess.run(["git", "ls-files"],
-                             capture_output=True, text=True).stdout.splitlines()
+    tracked = git_text("ls-files").splitlines()
     out = []
     for p in tracked:
         if p.startswith(EXCLUDED_PREFIXES):
@@ -2560,14 +2576,22 @@ def self_test():
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(source, target)
 
+            # Exercise both baseline source and diff decoding with real Git
+            # output, without modifying the checked-out production source.
+            fixture_engine = fixture / engine
+            with fixture_engine.open("a", encoding="utf-8") as output:
+                output.write("\n// citation fixture baseline \u2502\n")
+
             environment = {key: value for key, value in os.environ.items()
-                           if not key.startswith("GIT_")}
+                           if not key.startswith("GIT_") and key not in ("PYTHONPATH", "PYTHONHOME")}
             environment["GIT_CONFIG_NOSYSTEM"] = "1"
             environment["GIT_CONFIG_GLOBAL"] = os.devnull
+            environment["PYTHONIOENCODING"] = "utf-8:strict"
 
             def fixture_git(*arguments):
                 return subprocess.run(["git", *arguments], cwd=fixture, env=environment,
-                                      capture_output=True, text=True, check=True).stdout.strip()
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="strict", check=True).stdout.strip()
 
             fixture_git("init", "-q")
             fixture_git("add", "-A")
@@ -2578,37 +2602,143 @@ def self_test():
             base = fixture_git("rev-parse", "HEAD")
             command = [sys.executable, str(Path(__file__).resolve()), "--check", "--base", base]
 
-            def fixture_check():
-                return subprocess.run(command, cwd=fixture, env=environment,
-                                      capture_output=True, text=True, encoding="utf-8",
-                                      errors="replace")
+            check("CLI baseline Git source contains UTF-8",
+                  "\u2502" in fixture_git("show", f"{base}:{engine}"), True)
+            architecture = "docs/architecture/ARCHITECTURE.md"
+            check("CLI baseline Git documentation contains UTF-8",
+                  "\u2502" in fixture_git("show", f"{base}:{architecture}"), True)
+            check("CLI Git file enumeration includes the architecture document",
+                  architecture in fixture_git("ls-files").splitlines(), True)
+            with fixture_engine.open("a", encoding="utf-8") as output:
+                output.write("// citation fixture diff \u2500\n")
+            check("CLI Git diff contains UTF-8",
+                  "\u2500" in fixture_git("diff", "-U0", base, "--", engine), True)
 
-            clean = fixture_check()
-            check("CLI accepts its clean synthetic baseline", clean.returncode, 0)
-            check("CLI clean baseline reaches the drift comparison",
-                  "anchor(s) still point at the same text" in clean.stdout, True)
-            cli_passed = (clean.returncode == 0 and
-                          "anchor(s) still point at the same text" in clean.stdout)
+            def fixture_check(env):
+                return subprocess.run(command, cwd=fixture, env=env,
+                                      capture_output=True, text=True, encoding="utf-8",
+                                      errors="strict")
+
+            locale_env = dict(environment, LC_ALL="C", LANG="C", PYTHONUTF8="0",
+                              PYTHONCOERCECLOCALE="0")
+            probe_code = ("import locale, subprocess, sys; "
+                          "p = subprocess.Popen(['git', '--version'], stdout=subprocess.PIPE, text=True); "
+                          "encoding = p.stdout.encoding; p.communicate(); "
+                          "print('|'.join((locale.getpreferredencoding(False), encoding, "
+                          "str(sys.flags.utf8_mode), sys.stdout.encoding, sys.stderr.encoding)))")
+
+            def probe_encoding(env):
+                result = subprocess.run([sys.executable, "-c", probe_code], cwd=fixture, env=env,
+                                        capture_output=True, text=True, encoding="utf-8",
+                                        errors="strict", check=True)
+                return result.stdout.strip().split("|")
+
+            probe = probe_encoding(locale_env)
+            if probe[1].lower().replace("-", "") == "utf8":
+                # Some Windows installations have a UTF-8 system code page even
+                # in C locale. Force the subprocess default only in this child.
+                injected = fixture / "encoding-control"
+                injected.mkdir()
+                (injected / "sitecustomize.py").write_text(
+                    "import locale\nlocale.getencoding = lambda: 'ascii'\n", encoding="utf-8")
+                locale_env["PYTHONPATH"] = str(injected)
+                probe = probe_encoding(locale_env)
+            check("CLI locale control disables Python UTF-8 mode", probe[2], "0")
+            check("CLI locale control uses a non-UTF-8 subprocess default",
+                  probe[1].lower().replace("-", "") != "utf8", True)
+            check("CLI child stdout and stderr use UTF-8",
+                  [part.lower().replace("-", "") for part in probe[3:]], ["utf8", "utf8"])
+            print(f"check-citations: CLI locale control: locale={probe[0]}, "
+                  f"subprocess={probe[1]}, utf8_mode={probe[2]}, streams={probe[3]}/{probe[4]}.")
+
             fixture_adr = fixture / adr
             original = fixture_adr.read_text(encoding="utf-8")
-            for symbol, anchor in (("monoMaker.process", mono), ("soloMonitor.process", solo)):
-                old = f"(`{symbol}`)"
-                missing = symbol + ".absentForCliControl"
-                check(f"CLI fixture contains the {symbol} gloss", old in original, True)
-                if old not in original:
-                    cli_passed = False
-                    continue
-                fixture_adr.write_text(original.replace(old, f"(`{missing}`)", 1),
-                                       encoding="utf-8")
-                result = fixture_check()
-                diagnostic = f"::error::{adr}: the citation {anchor} names '{missing}'"
-                check(f"CLI rejects the invalid {symbol} gloss", result.returncode, 2)
-                check(f"CLI identifies the invalid {symbol} gloss",
-                      diagnostic in result.stderr, True)
-                cli_passed = cli_passed and result.returncode == 2 and diagnostic in result.stderr
+            targets = (("monoMaker.process", mono), ("soloMonitor.process", solo))
+
+            def selected_gloss(text, symbol, anchor):
+                return next(((span, gloss_match(text, span))
+                             for whole, tracked, span, _anchors in citations(text)
+                             if tracked == engine and whole == anchor and
+                             gloss_after(text, span) == symbol), None)
+
+            def gloss_value_span(target):
+                span, match = target
+                group = 1 if match.group(1) is not None else 2
+                return span[1] + match.start(group), span[1] + match.end(group)
+
+            variants = []
+            for first_quote, second_quote in (("`", "`"), ('"', '"'),
+                                               ("`", '"'), ('"', "`")):
+                text = original
+                for (symbol, anchor), quote in zip(targets, (first_quote, second_quote)):
+                    target = selected_gloss(text, symbol, anchor)
+                    check(f"CLI quote fixture identifies the {symbol} citation", target is not None, True)
+                    if target is None:
+                        break
+                    start, end = gloss_value_span(target)
+                    text = text[:start - 1] + quote + text[start:end] + quote + text[end + 1:]
+                else:
+                    variants.append((f"ambient {first_quote}{second_quote}", environment, text))
+
+            spaced = original
+            for symbol, anchor in targets:
+                target = selected_gloss(spaced, symbol, anchor)
+                check(f"CLI spacing fixture identifies the {symbol} citation", target is not None, True)
+                if target is None:
+                    break
+                start, _end = gloss_value_span(target)
+                spaced = spaced[:start - 2] + " \t " + spaced[start - 2:]
+            else:
+                variants.append(("ambient whitespace", environment, spaced))
+
+            # A repeated valid claim and identical earlier prose must not move
+            # either mutation away from its selected citation.
+            repeated = ("Earlier fixture prose (`monoMaker.process`).\n\n" + original +
+                        f"\nAdditional fixture: `{mono}` (`monoMaker.process`).\n")
+            variants.append(("ambient repeated", environment, repeated))
+            variants.append(("non-UTF-8", locale_env, original))
+            check("CLI fixture constructs all seven variants", len(variants), 7)
+            cli_passed = len(variants) == 7
+            clean_runs = negative_runs = 0
+            for label, env, baseline in variants:
+                fixture_adr.write_text(baseline, encoding="utf-8")
+                clean = fixture_check(env)
+                clean_runs += 1
+                reached = "anchor(s) still point at the same text" in clean.stdout
+                check(f"CLI {label} clean baseline exits successfully", clean.returncode, 0)
+                check(f"CLI {label} clean baseline reaches drift comparison", reached, True)
+                cli_passed = cli_passed and clean.returncode == 0 and reached
+                for symbol, anchor in targets:
+                    # Select a recognized gloss by its own citation span. Earlier
+                    # identical prose and other valid glosses cannot redirect it.
+                    target = selected_gloss(baseline, symbol, anchor)
+                    check(f"CLI {label} fixture identifies the {symbol} citation", target is not None, True)
+                    if target is None:
+                        cli_passed = False
+                        continue
+                    start, end = gloss_value_span(target)
+                    missing = symbol + ".absentForCliControl"
+                    mutated = baseline[:start] + missing + baseline[end:]
+                    check(f"CLI {label} mutation preserves citation anchors",
+                          [item[0] for item in citations(mutated)],
+                          [item[0] for item in citations(baseline)])
+                    other = required - {symbol}
+                    check(f"CLI {label} mutation retains the other required claim",
+                          other.issubset({gloss for _whole, gloss in engine_claims(mutated)}), True)
+                    fixture_adr.write_text(mutated, encoding="utf-8")
+                    result = fixture_check(env)
+                    negative_runs += 1
+                    diagnostic = f"::error::{adr}: the citation {anchor} names '{missing}'"
+                    check(f"CLI {label} rejects the invalid {symbol} gloss", result.returncode, 2)
+                    check(f"CLI {label} identifies the invalid {symbol} gloss",
+                          diagnostic in result.stderr, True)
+                    cli_passed = cli_passed and result.returncode == 2 and diagnostic in result.stderr
+            check("CLI fixture ran every clean control", clean_runs, 7)
+            check("CLI fixture ran every negative control", negative_runs, 14)
+            cli_passed = cli_passed and clean_runs == 7 and negative_runs == 14
             if cli_passed:
-                print("check-citations: CLI gloss controls passed (one clean, two rejected).")
-    except (OSError, subprocess.CalledProcessError) as error:
+                print("check-citations: CLI gloss controls passed (seven clean, fourteen rejected).")
+    except (OSError, UnicodeError, subprocess.CalledProcessError) as error:
         check(f"CLI integration fixture setup succeeded ({error})", False, True)
 
     # --- 8d. THE AIM CHECK MUST NOT DISABLE THE REPAIR PATH ------------------
@@ -2977,8 +3107,8 @@ def self_test():
     # stops before reading a base revision, `--fix` does not.
     #
     # The tell is which failure comes back. With no base revision reachable,
-    # `--fix` gets as far as `git show` and reports "nothing to check against";
-    # a run that stopped at the aim check never gets there and says so instead.
+    # `--fix` reaches the invalid Git base; a run stopped at the aim check does
+    # not attempt to read it. A failed Git command is no longer silently skipped.
     import io                       # local: the tool does not otherwise capture output
     import contextlib
     saved_argv = sys.argv[:]
@@ -2992,9 +3122,15 @@ def self_test():
             sys.argv = ["check-citations.py", mode, "--base", "no/such/revision"]
             out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                rc = main()
+                try:
+                    rc = main()
+                except subprocess.CalledProcessError as error:
+                    if mode != "--fix" or "no/such/revision" not in error.cmd:
+                        raise
+                    rc = 2
+                    print("reached the invalid Git base", file=sys.stderr)
             text = out.getvalue() + err.getvalue()
-            reached = "nothing to check against" in text
+            reached = "reached the invalid Git base" in text
             check(f"{mode}: rc is 2 over a misaimed declaration", rc, 2)
             check(f"{mode}: {'reaches' if must_reach_base else 'stops before'} the base "
                   f"revision", reached, must_reach_base)
@@ -3341,11 +3477,10 @@ def main():
     used_reaims = set()
     base_doc_cites = {}                # doc -> the citation spellings the BASE carries
     for doc in doc_files():
-        base_text = subprocess.run(["git", "show", f"{args.base}:{doc}"],
-                                   capture_output=True, text=True)
-        if base_text.returncode != 0:
+        base_lines = git_show(args.base, doc)
+        if base_lines is None:
             continue                       # new document: nothing to drift from
-        old_cites = citations(base_text.stdout)
+        old_cites = citations("\n".join(base_lines))
         base_doc_cites[doc] = {c[0] for c in old_cites}
         text = read(doc)
         cur_cites = citations(text)
@@ -3691,4 +3826,17 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # The CLI emits UTF-8 diagnostics, including when a shell's locale is not
+    # UTF-8. The fixture's parent captures the same encoding strictly.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="strict")
+    try:
+        sys.exit(main())
+    except UnicodeError as error:
+        print(f"check-citations: invalid UTF-8 repository or Git text: {error}", file=sys.stderr)
+        sys.exit(2)
+    except subprocess.CalledProcessError as error:
+        print(f"check-citations: Git command failed ({error.returncode}): "
+              f"{error.stderr or error}", file=sys.stderr)
+        sys.exit(2)

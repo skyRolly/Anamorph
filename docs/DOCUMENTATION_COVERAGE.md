@@ -19600,3 +19600,24 @@ returned success on the invalid citation while its helper still detected the
 problem; the new self-test rejected that mutation. The source-bound condition
 fixture accepts whitespace variations and reports zero or multiple matches.
 TESTING describes the distinction between these controls and source review.
+
+## Citation encoding and gloss fixture audit - 2026-11-24T18:41:00Z
+
+The pre-edit audit found that parent-side UTF-8 capture did not set the child
+interpreter's Git decoding. On Linux with an ASCII C locale and Python UTF-8
+mode disabled, the earlier CLI and its self-test failed while decoding valid
+UTF-8 Git content. A separate strict CP1252 decode of the architecture blob
+also failed at byte 476; this was not a native Windows execution.
+
+The fixture also searched for backticked glosses by document-wide replacement,
+although the parser accepts double quotes. Both double-quoted call-site claims
+were recognized by the parser and semantic verifier, but each made the old
+self-test skip its intended negative control. Earlier identical prose also
+redirected the old mutation. The updated fixture selects the parsed source
+anchor and gloss span, preserves the citation, and tests both quote forms.
+
+The citation checker now reads Git text as strict UTF-8 and emits UTF-8 CLI
+diagnostics. Its self-test passed 389 cases, including seven clean CLI runs
+and fourteen independently rejected gloss mutations across quote, spacing,
+repetition, and non-UTF-8 subprocess controls. TESTING records the boundaries;
+the checks do not establish complete DSP stage order or native acceptance.

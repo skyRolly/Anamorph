@@ -6771,6 +6771,16 @@ ADR-0006 symbol gloss. It checks the exit status and named diagnostic, so discon
 CLI verifier fails even while helper tests still pass. The Mono Maker enable fixture accepts
 whitespace variations and requires exactly one matching source condition.
 
+Git text and CLI diagnostics use strict UTF-8 independently of the ambient locale. The
+temporary baseline includes UTF-8 source and documentation, and its diff includes UTF-8.
+The self-test runs the CLI with both its ambient environment and a measured non-UTF-8
+subprocess default; on a UTF-8-only system it injects an ASCII default for that control.
+Its parent and child agree on UTF-8 output. Four combinations of the existing backtick and
+double-quote gloss forms, permitted spacing, and an earlier repeated claim each run a clean
+CLI check and independent invalid-symbol checks. Mutations select the parsed citation and
+gloss span; unrelated parentheticals cannot redirect them. The source-text gloss check is
+still separate from verification of DSP stage ordering.
+
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and
 `:71` — is declared in `VERSIONED_LINES`, which replaces the base comparison with "does this line
