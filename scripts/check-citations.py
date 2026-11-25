@@ -1888,8 +1888,12 @@ def normalized_line_map(old_lines, new_lines, *, env=None):
         new = Path(temporary) / "new"
         old.write_bytes("\n".join(old_lines).encode("utf-8"))
         new.write_bytes("\n".join(new_lines).encode("utf-8"))
+        git_environment = dict(env) if env is not None else None
+        if git_environment is not None:
+            # A caller's TMPDIR may itself be inside a Git repository.
+            git_environment["GIT_CEILING_DIRECTORIES"] = str(Path(temporary).resolve().parent)
         result = git_process("diff", "--no-index", "--no-ext-diff", "--no-color",
-                             "--text", "-U0", "--", str(old), str(new), env=env,
+                             "--text", "-U0", "--", str(old), str(new), env=git_environment,
                              cwd=temporary if env is not None else None)
         # Unlike the repository diff, --no-index returns 1 for a real diff.
         if result.returncode not in (0, 1):
@@ -2730,10 +2734,12 @@ def self_test():
                                 "exec(\"try:\\n p=m.normalized_line_map(['a','b',''],['new','a','b',''],env=env); "
                                 "print('mapped',p(2))\\nexcept subprocess.CalledProcessError as e:\\n "
                                 "print('git-status',e.returncode);sys.exit(1)\")")
+            local_probe_environment = dict(environment, TMPDIR=str(local_config_repo),
+                                           TEMP=str(local_config_repo), TMP=str(local_config_repo))
             def local_config_probe(mode):
                 return subprocess.run([sys.executable, "-c", local_probe_code,
                                        str(Path(__file__).resolve()), mode], cwd=local_config_repo,
-                                      env=environment, capture_output=True, text=True,
+                                      env=local_probe_environment, capture_output=True, text=True,
                                       encoding="utf-8", errors="strict")
             raw_local = local_config_probe("raw")
             check("local Git configuration poison reaches Git", raw_local.returncode, 1)

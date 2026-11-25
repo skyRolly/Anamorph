@@ -6797,6 +6797,8 @@ normalized diff results. A lone-CR document keeps its text and unrelated citatio
 The normalized-diff self-tests also isolate inherited and repository-local Git
 configuration in disposable subprocesses. Their controls prove the injected
 configuration would fail Git before checking that isolation preserves the map.
+The temporary directory control also nests that directory under a repository
+with invalid local Git settings, so parent-repository discovery is exercised.
 Ordinary checker invocations retain their own Git environment and working directory.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose

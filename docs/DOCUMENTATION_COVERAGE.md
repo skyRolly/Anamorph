@@ -19674,3 +19674,11 @@ disposable working directory for its normalized-diff controls. Separate probes
 confirm that both the inherited setting and a disposable repository-local setting
 reach Git without isolation, and that isolated mapping succeeds. Ordinary checker
 invocations still use their own Git configuration and working directory.
+
+## Nested temporary Git isolation audit - 2026-11-25T00:21:03Z
+
+When `TMPDIR` was inside a disposable repository with invalid local Git
+configuration, the isolated self-test still failed because Git discovered the
+parent repository above its temporary working directory. The test subprocess
+now bounds that discovery and exercises a temporary directory nested inside
+the poisoned repository. Ordinary checker invocations remain unchanged.
