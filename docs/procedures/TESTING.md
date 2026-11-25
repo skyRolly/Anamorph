@@ -6754,11 +6754,55 @@ full gate.
 
 **`check-citations.py` needs a base revision, and which one you pick changes the answer.** CI compares
 against the *previous push*; a local run against `origin/main` can differ, because a document whose
-citation *count* differs from the base falls back to ordinal pairing, which only judges base
-spellings still present verbatim — and a re-anchor changes the spelling. Run **both** before
+citation *count* differs from the base falls back to matching base spellings still present verbatim
+and reports re-spelled or removed anchors as unchecked. Run **both** before
 concluding the gate is green. If you re-anchor a citation deliberately, declare the pair in
 `DELIBERATE_REAIMS` in the **same change set**: the tool cannot tell a repair from a drift, so a fix
 landed on its own turns the gate red on the commit that fixed it.
+
+ADR-0006 opts into symbol-level gloss checks for the Mono Maker and Band Solo call sites.
+The citation self-test requires both recognized claims and exercises wrong targets, an absent
+symbol and a same-path addition. The gloss check verifies the named source text; stage order
+still requires source review and the corresponding DSP tests.
+
+The self-test also creates a temporary local Git baseline from the tracked source targets and
+opted-in documents, then runs the actual `--check` CLI on a clean fixture and on each invalid
+ADR-0006 symbol gloss. It checks the exit status and named diagnostic, so disconnecting the
+CLI verifier fails even while helper tests still pass. The Mono Maker enable fixture accepts
+whitespace variations and requires exactly one matching source condition.
+
+Git process results are captured as bytes. Successful repository text is decoded as strict
+UTF-8 with universal newline handling; unknown diagnostic bytes are escaped separately, so
+they cannot hide a Git failure or a missing baseline document. NUL-delimited Git paths retain
+Unicode names without relying on quoted path spellings. The temporary baseline includes UTF-8
+source and documentation, its diff includes UTF-8, and file enumeration includes a synthetic
+UTF-8 filename. The self-test runs the CLI with both its ambient environment and a measured
+non-UTF-8 subprocess default. Its forced fallback alters only implicit text-mode subprocesses
+inside the test child; explicitly encoded and binary captures remain unchanged. The actual
+fallback was exercised on Python 3.10 and 3.12, with UTF-8 child output. Four combinations of
+the existing backtick and
+double-quote gloss forms, permitted spacing, and an earlier repeated claim each run a clean
+CLI check and independent invalid-symbol checks. Mutations select the parsed citation and
+gloss span; unrelated parentheticals cannot redirect them. The source-text gloss check is
+still separate from verification of DSP stage ordering.
+The Git controls exercise localized stderr, failed existence and diff queries, malformed
+payloads and working documents, Unicode path identity and a later drifted document through the
+real CLI. A new document has no drift baseline, but its text must still be valid UTF-8.
+Restoring shared text-mode capture must fail these controls, even when the underlying Git
+output is valid.
+For source files containing lone CR line endings, the checker maps normalized lines using
+Git's no-index diff; ordinary LF and CRLF sources keep the existing repository diff path.
+The CLI fixture checks drift, repair and a clean recheck, and rejects failed or malformed
+normalized diff results. A lone-CR document keeps its text and unrelated citations.
+The normalized-diff self-tests also isolate inherited and repository-local Git
+configuration in disposable subprocesses. Their controls prove the injected
+configuration would fail Git before checking that isolation preserves the map.
+The temporary directory control also nests that directory under a repository
+with invalid local Git settings and a path-list separator in its name. A private
+Git directory prevents parent-repository discovery without parsing that name as a list.
+The fixture itself also contains a path-list separator; its relative Python hook
+path keeps the child controls active without splitting the directory name.
+Ordinary checker invocations retain their own Git environment and working directory.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose
 content changes on its own schedule — `CMakeLists.txt:14`, and the JUCE pin at `:67`, `:70` and

@@ -3290,11 +3290,14 @@ architectural citation pointing at unrelated code, and one liveness claim that w
 
 **MAINTAINER SIGN-OFF RECORDED HERE, granted 2026-08-19**, covering the two decisions in this round
 that the process asks a human to confirm: re-aiming ADR-0009's evidence to
-`src/dsp/AnamorphEngine.cpp:2294-2356` (a deliberate re-aim declared in
-`DELIBERATE_REAIMS` and machine-checked against
-`Defensive NaN / Inf self-heal`), and restating the leaf-layer `-Werror=function-effects` gate's
-liveness evidence to name the mechanism the tree actually runs. The range shown is
-mapped to current source; at the dated sign-off it ended at line 2327.
+the self-heal block and restating the leaf-layer `-Werror=function-effects` gate's
+liveness evidence to name the mechanism the tree actually ran. At sign-off, the
+re-aim to `14422edb:src/dsp/AnamorphEngine.cpp:1269-1313` was declared in
+`DELIBERATE_REAIMS` and checked against `Defensive NaN / Inf self-heal`.
+The current live range is `src/dsp/AnamorphEngine.cpp:2294-2356`. Ordinary
+citation mapping tracks its line identity against the selected base; there is
+no current declaration for this audit citation, and semantic ownership still
+requires direct source review.
 
 **A definition whose signature carried a comma inside template arguments was discarded whole.**
 `_is_declarator_tail` rejects a depth-zero comma because an argument list is made of one, and `<`/`>`
@@ -19559,3 +19562,130 @@ conditioned dry, Mix and State 150 corrections. Live signal-flow, recovery
 and Level Match references use the combined engine. TESTING retains the
 independent endpoint regressions and the injected held-envelope premise.
 The Unreleased entries retain their distinct implementing evidence.
+
+## Post-integration citation review - 2026-11-23T16:34:11Z
+
+The pre-edit audit found that the 2026-08-19 sign-off paragraph attributed
+its current self-heal citation to an active declaration. The original
+sign-off record and its then-current declaration identify the historical
+reviewed range as 1269-1313. The paragraph now separates that review from the
+live range, ordinary line mapping and direct semantic source review.
+
+ADR-0006's source evidence pointed to an earlier A/B restore region. Its source
+evidence now names the post-Mix Mono Maker and post-output Band Solo call
+sites, without changing the Accepted decision or its historical tests.
+The pre-edit checker run from post-244 to post-245 reported 601 checked
+anchors and two re-spelled or removed anchors beyond its judgment. ADR-0006
+is now opted into its existing symbol gloss check. The two recognized claims
+resolve to their named calls. The self-test passed 279 cases, and disposable
+checks rejected each moved call-site anchor, an absent symbol and an added
+same-path citation accompanying a wrong claim. A valid same-path addition
+passed. TESTING records the count-mismatch limit and these controls. The
+gloss check does not establish stage order on its own.
+
+Review of the first candidate found its self-test rejected an additional valid
+gloss and the repository map still described the previous opt-in set. The
+self-test now requires both call-site claims while allowing other valid claims;
+it rejects a missing required claim or an invalid additional gloss. The map
+describes the current checker scope.
+
+## Citation CLI and fixture follow-up - 2026-11-23T19:37:19Z
+
+The pre-edit review found that helper-level gloss tests did not exercise the
+CLI wiring, and the additional-gloss fixture relied on exact C++ spacing with
+a line-1 fallback. The citation self-test now runs the actual CLI against a
+temporary local Git baseline and checks both its exit status and the named
+invalid-symbol diagnostic for each ADR-0006 call. A disconnected CLI verifier
+returned success on the invalid citation while its helper still detected the
+problem; the new self-test rejected that mutation. The source-bound condition
+fixture accepts whitespace variations and reports zero or multiple matches.
+TESTING describes the distinction between these controls and source review.
+
+## Citation encoding and gloss fixture audit - 2026-11-24T18:41:00Z
+
+The pre-edit audit found that parent-side UTF-8 capture did not set the child
+interpreter's Git decoding. On Linux with an ASCII C locale and Python UTF-8
+mode disabled, the earlier CLI and its self-test failed while decoding valid
+UTF-8 Git content. A separate strict CP1252 decode of the architecture blob
+also failed at byte 476; this was not a native Windows execution.
+
+The fixture also searched for backticked glosses by document-wide replacement,
+although the parser accepts double quotes. Both double-quoted call-site claims
+were recognized by the parser and semantic verifier, but each made the old
+self-test skip its intended negative control. Earlier identical prose also
+redirected the old mutation. The updated fixture selects the parsed source
+anchor and gloss span, preserves the citation, and tests both quote forms.
+
+The citation checker now reads Git text as strict UTF-8 and emits UTF-8 CLI
+diagnostics. Its self-test passed 389 cases, including seven clean CLI runs
+and fourteen independently rejected gloss mutations across quote, spacing,
+repetition, and non-UTF-8 subprocess controls. TESTING records the boundaries;
+the checks do not establish complete DSP stage order or native acceptance.
+
+The follow-up file-list audit added a synthetic UTF-8 filename to the isolated
+Git fixture and exercised the real enumeration helper under a non-UTF-8
+subprocess default. With this addition the self-test passed 392 cases in both
+the ordinary and C-locale environments. The filename is not a repository
+document, and the control makes no broader filename-compatibility claim.
+
+## Git stream and Python fallback audit - 2026-11-24T22:41:43Z
+
+The pre-edit review reproduced a localized non-UTF-8 Git error masking both a
+new baseline document and a failed diff. A quoted Unicode path also made an
+existing baseline file appear absent. Successful Git payloads now retain
+strict UTF-8 and universal newline handling, while diagnostic bytes are
+escaped separately and the Git command and status are retained. Literal,
+NUL-delimited path queries distinguish an existing name from an absent one.
+
+The earlier fallback changed `locale.getencoding`, but a real Python 3.10.22
+control retained a UTF-8 implicit subprocess decoder and failed the self-test;
+the same control passed on Python 3.12.14. The test-child fallback now changes
+only implicit text subprocesses and measures the actual decoder. The candidate
+self-test passed 443 cases on each interpreter, including the forced fallback,
+eight clean CLI fixtures, sixteen rejected glosses and eleven Git stream
+controls. These controls do not establish native Windows locale behavior.
+
+## New document decoding audit - 2026-11-24T22:57:00Z
+
+A separately staged new document containing byte `0xff` exposed an additional
+gap: the earlier checker skipped its working text after finding no baseline,
+and exited 0. The checker now reads every tracked working document strictly
+before that skip. A real CLI control rejects the malformed new document while
+retaining normal handling for valid additions. The extended self-test passed
+445 cases on Python 3.10.22 and 3.12.14, including twelve Git stream controls.
+
+## Lone-CR source mapping audit - 2026-11-24T23:12:37Z
+
+The pre-edit disposable source used lone CR line endings and inserted a line
+above a citation. The checker detected drift but mapped line 10 to line 10;
+`--fix` exited 0 without repairing it and the following `--check` still failed.
+Git counts LF-delimited physical lines, while the checker reads universal
+newlines. The targeted path now maps normalized source lines with Git's
+no-index diff when either source contains a lone CR. A disposable check maps
+line 10 to 11, repairs it, and passes the next check while preserving a Unicode
+diagram and an unrelated citation. Ordinary LF and CRLF mapping is unchanged.
+
+## Git fixture isolation audit - 2026-11-24T23:42:43Z
+
+An injected invalid `diff.algorithm` made the new normalized-diff self-test exit
+2 before its isolated fixture started; the prior self-test passed with the same
+inherited setting. The self-test now supplies a sanitized Git environment and a
+disposable working directory for its normalized-diff controls. Separate probes
+confirm that both the inherited setting and a disposable repository-local setting
+reach Git without isolation, and that isolated mapping succeeds. Ordinary checker
+invocations still use their own Git configuration and working directory.
+
+## Nested temporary Git isolation audit - 2026-11-25T00:21:03Z
+
+When `TMPDIR` was inside a disposable repository with invalid local Git
+configuration, the isolated self-test still failed because Git discovered the
+parent repository above its temporary working directory. The test subprocess
+now uses a private Git directory and exercises a temporary directory nested
+inside the poisoned repository. Ordinary checker invocations remain unchanged.
+
+The initial discovery ceiling also failed when the parent path contained the
+platform path-list separator, as measured at 2026-11-25T00:26:29Z. The fixture
+now exercises that spelling without relying on a separator-delimited ceiling.
+The same spelling split the fixture's absolute Python hook path, leaving child
+controls disconnected. The fixture now uses a relative hook path and includes
+the separator in its own directory name, exercising that boundary on every run.
