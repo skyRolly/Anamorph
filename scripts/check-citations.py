@@ -1890,8 +1890,11 @@ def normalized_line_map(old_lines, new_lines, *, env=None):
         new.write_bytes("\n".join(new_lines).encode("utf-8"))
         git_environment = dict(env) if env is not None else None
         if git_environment is not None:
-            # A caller's TMPDIR may itself be inside a Git repository.
-            git_environment["GIT_CEILING_DIRECTORIES"] = str(Path(temporary).resolve().parent)
+            # A caller's TMPDIR may be inside a Git repository, and a path-list
+            # separator in its name cannot be represented in a Git ceiling.
+            git_environment["GIT_DIR"] = str(Path(temporary) / ".git")
+            git_environment["GIT_WORK_TREE"] = temporary
+            git_bytes(git_process("init", "-q", env=git_environment, cwd=temporary))
         result = git_process("diff", "--no-index", "--no-ext-diff", "--no-color",
                              "--text", "-U0", "--", str(old), str(new), env=git_environment,
                              cwd=temporary if env is not None else None)
@@ -2678,7 +2681,8 @@ def self_test():
     # helper-only test cannot catch main() disconnecting the gloss verifier.
     try:
         with tempfile.TemporaryDirectory(prefix="anamorph-citations-") as temporary:
-            fixture = Path(temporary)
+            fixture = Path(temporary) / ("citation-fixture" + os.pathsep + "separator")
+            fixture.mkdir()
             for name in sorted(set(TRACKED) | set(GLOSS_CHECKED_DOCS)):
                 source = Path(name)
                 if source.is_file():
@@ -2722,7 +2726,7 @@ def self_test():
 
             # The no-index unit probe must not inherit a caller repository's
             # local Git configuration either. Both probes use a disposable repo.
-            local_config_repo = fixture / "local-config-probe"
+            local_config_repo = fixture / ("local-config-probe" + os.pathsep + "separator")
             local_config_repo.mkdir()
             fixture_git("-C", str(local_config_repo), "init", "-q")
             fixture_git("-C", str(local_config_repo), "config", "diff.algorithm",
@@ -2860,7 +2864,7 @@ subprocess.Popen = FixturePopen
 
             probe = probe_encoding(locale_env)
             if probe[1].lower().replace("-", "") == "utf8":
-                locale_env["PYTHONPATH"] = str(injected)
+                locale_env["PYTHONPATH"] = injected.name
                 locale_env["ANAMORPH_CITATION_ASCII_DEFAULT"] = "1"
                 probe = probe_encoding(locale_env)
             check("CLI locale control disables Python UTF-8 mode", probe[2], "0")
@@ -2882,7 +2886,7 @@ subprocess.Popen = FixturePopen
                 before = probe_encoding(forced_env)
             check("CLI fallback starts with a UTF-8 subprocess default",
                   before[1].lower().replace("-", ""), "utf8")
-            forced_env["PYTHONPATH"] = str(injected)
+            forced_env["PYTHONPATH"] = injected.name
             forced_env["ANAMORPH_CITATION_ASCII_DEFAULT"] = "1"
             after = probe_encoding(forced_env)
             check("CLI fallback changes the actual implicit subprocess encoding",
@@ -3008,7 +3012,7 @@ subprocess.Popen = FixturePopen
             def fault_check(label, expected, marker, revision=None):
                 trace = fixture / "git-fault-trace"
                 trace.unlink(missing_ok=True)
-                fault_env = dict(locale_env, PYTHONPATH=str(injected),
+                fault_env = dict(locale_env, PYTHONPATH=injected.name,
                                  ANAMORPH_CITATION_GIT_FAULT=label,
                                  ANAMORPH_CITATION_GIT_TRACE=str(trace))
                 result = fixture_check(fault_env, revision)

@@ -6798,7 +6798,10 @@ The normalized-diff self-tests also isolate inherited and repository-local Git
 configuration in disposable subprocesses. Their controls prove the injected
 configuration would fail Git before checking that isolation preserves the map.
 The temporary directory control also nests that directory under a repository
-with invalid local Git settings, so parent-repository discovery is exercised.
+with invalid local Git settings and a path-list separator in its name. A private
+Git directory prevents parent-repository discovery without parsing that name as a list.
+The fixture itself also contains a path-list separator; its relative Python hook
+path keeps the child controls active without splitting the directory name.
 Ordinary checker invocations retain their own Git environment and working directory.
 
 **A dependency bump has TWO ways to fail this gate, and they mean opposite things.** A line whose

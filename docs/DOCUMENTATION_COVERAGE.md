@@ -19680,5 +19680,12 @@ invocations still use their own Git configuration and working directory.
 When `TMPDIR` was inside a disposable repository with invalid local Git
 configuration, the isolated self-test still failed because Git discovered the
 parent repository above its temporary working directory. The test subprocess
-now bounds that discovery and exercises a temporary directory nested inside
-the poisoned repository. Ordinary checker invocations remain unchanged.
+now uses a private Git directory and exercises a temporary directory nested
+inside the poisoned repository. Ordinary checker invocations remain unchanged.
+
+The initial discovery ceiling also failed when the parent path contained the
+platform path-list separator, as measured at 2026-11-25T00:26:29Z. The fixture
+now exercises that spelling without relying on a separator-delimited ceiling.
+The same spelling split the fixture's absolute Python hook path, leaving child
+controls disconnected. The fixture now uses a relative hook path and includes
+the separator in its own directory name, exercising that boundary on every run.
